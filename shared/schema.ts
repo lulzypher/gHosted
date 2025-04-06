@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -91,6 +92,47 @@ export const insertPinnedContentSchema = createInsertSchema(pinnedContents).pick
   postId: true,
   deviceId: true,
 });
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+  devices: many(devices),
+  pinnedContents: many(pinnedContents),
+  peerConnections: many(peerConnections),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [posts.userId],
+    references: [users.id],
+  }),
+  pinnedContents: many(pinnedContents),
+}));
+
+export const peerConnectionsRelations = relations(peerConnections, ({ one }) => ({
+  user: one(users, {
+    fields: [peerConnections.userId],
+    references: [users.id],
+  }),
+}));
+
+export const devicesRelations = relations(devices, ({ one }) => ({
+  user: one(users, {
+    fields: [devices.userId],
+    references: [users.id],
+  }),
+}));
+
+export const pinnedContentsRelations = relations(pinnedContents, ({ one }) => ({
+  user: one(users, {
+    fields: [pinnedContents.userId],
+    references: [users.id],
+  }),
+  post: one(posts, {
+    fields: [pinnedContents.postId],
+    references: [posts.id],
+  }),
+}));
 
 // Export types
 export type User = typeof users.$inferSelect;

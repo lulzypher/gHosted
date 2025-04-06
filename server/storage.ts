@@ -6,6 +6,10 @@ import {
   pinnedContents, type PinnedContent, type InsertPinnedContent
 } from "@shared/schema";
 
+// Import db for DatabaseStorage
+import { db } from "./db";
+import { eq, desc, and } from "drizzle-orm";
+
 // Interface for storage operations
 export interface IStorage {
   // User operations
@@ -83,7 +87,12 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userIdCounter++;
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      bio: insertUser.bio || null,
+      avatarCid: insertUser.avatarCid || null 
+    };
     this.users.set(id, user);
     return user;
   }
@@ -94,7 +103,8 @@ export class MemStorage implements IStorage {
     const post: Post = { 
       ...insertPost, 
       id, 
-      createdAt: new Date() 
+      createdAt: new Date(),
+      imageCid: insertPost.imageCid || null
     };
     this.posts.set(id, post);
     return post;
@@ -192,7 +202,9 @@ export class MemStorage implements IStorage {
     const pinnedContent: PinnedContent = { 
       ...insertPinnedContent, 
       id, 
-      pinnedAt: new Date() 
+      pinnedAt: new Date(),
+      deviceId: insertPinnedContent.deviceId || null,
+      postId: insertPinnedContent.postId || null
     };
     this.pinnedContents.set(id, pinnedContent);
     return pinnedContent;
@@ -215,4 +227,135 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database storage implementation
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async getUserByDID(did: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.did, did));
+    return user || undefined;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
+  }
+
+  // Post operations
+  async createPost(post: InsertPost): Promise<Post> {
+    const [newPost] = await db.insert(posts).values(post).returning();
+    return newPost;
+  }
+
+  async getPost(id: number): Promise<Post | undefined> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    return post || undefined;
+  }
+
+  async getPostByCID(contentCid: string): Promise<Post | undefined> {
+    const [post] = await db.select().from(posts).where(eq(posts.contentCid, contentCid));
+    return post || undefined;
+  }
+
+  async getPostsByUser(userId: number): Promise<Post[]> {
+    return await db.select()
+      .from(posts)
+      .where(eq(posts.userId, userId))
+      .orderBy(desc(posts.createdAt));
+  }
+
+  async getFeedPosts(): Promise<Post[]> {
+    return await db.select().from(posts).orderBy(desc(posts.createdAt));
+  }
+
+  // Peer connection operations
+  async createPeerConnection(connection: InsertPeerConnection): Promise<PeerConnection> {
+    const [newConnection] = await db.insert(peerConnections).values(connection).returning();
+    return newConnection;
+  }
+
+  async getPeerConnectionsByUser(userId: number): Promise<PeerConnection[]> {
+    return await db.select()
+      .from(peerConnections)
+      .where(eq(peerConnections.userId, userId));
+  }
+
+  async updatePeerConnectionStatus(id: number, status: string): Promise<PeerConnection> {
+    const [updatedConnection] = await db.update(peerConnections)
+      .set({ status, lastSeen: new Date() })
+      .where(eq(peerConnections.id, id))
+      .returning();
+    
+    if (!updatedConnection) {
+      throw new Error(`Peer connection with ID ${id} not found`);
+    }
+    
+    return updatedConnection;
+  }
+
+  // Device operations
+  async createDevice(device: InsertDevice): Promise<Device> {
+    const [newDevice] = await db.insert(devices).values(device).returning();
+    return newDevice;
+  }
+
+  async getDevicesByUser(userId: number): Promise<Device[]> {
+    return await db.select()
+      .from(devices)
+      .where(eq(devices.userId, userId));
+  }
+
+  async updateDeviceLastSynced(id: number): Promise<Device> {
+    const [updatedDevice] = await db.update(devices)
+      .set({ lastSynced: new Date() })
+      .where(eq(devices.id, id))
+      .returning();
+    
+    if (!updatedDevice) {
+      throw new Error(`Device with ID ${id} not found`);
+    }
+    
+    return updatedDevice;
+  }
+
+  // Pinned content operations
+  async pinContent(content: InsertPinnedContent): Promise<PinnedContent> {
+    const [pinnedContent] = await db.insert(pinnedContents).values(content).returning();
+    return pinnedContent;
+  }
+
+  async getPinnedContentsByUser(userId: number): Promise<PinnedContent[]> {
+    return await db.select()
+      .from(pinnedContents)
+      .where(eq(pinnedContents.userId, userId))
+      .orderBy(desc(pinnedContents.pinnedAt));
+  }
+
+  async getPinnedContentByUserAndCID(userId: number, contentCid: string): Promise<PinnedContent | undefined> {
+    const [pinnedContent] = await db.select()
+      .from(pinnedContents)
+      .where(
+        and(
+          eq(pinnedContents.userId, userId),
+          eq(pinnedContents.contentCid, contentCid)
+        )
+      );
+    return pinnedContent || undefined;
+  }
+
+  async unpinContent(id: number): Promise<void> {
+    await db.delete(pinnedContents).where(eq(pinnedContents.id, id));
+  }
+}
+
+// Replace memory storage with database storage
+export const storage = new DatabaseStorage();
