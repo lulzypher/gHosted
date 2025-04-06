@@ -4,6 +4,7 @@ import { usePeerConnections } from '@/hooks/use-peer-connection';
 import { User, HardDrive, Smartphone, FileText } from 'lucide-react';
 import { PinnedContent } from '@/types';
 import { Link } from 'wouter';
+import LocalPeers from './LocalPeers';
 
 const RightSidebar: React.FC = () => {
   const { pinnedContents } = useIPFS();
@@ -143,6 +144,9 @@ const RightSidebar: React.FC = () => {
           )}
         </div>
       </div>
+      
+      {/* Local Peers - P2P Discovery */}
+      <LocalPeers />
       
       {/* Suggested Communities */}
       <div className="bg-white rounded-xl shadow-sm p-4">

@@ -8,6 +8,7 @@ import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { IPFSProvider } from '@/contexts/IPFSContext';
 import { OrbitDBProvider } from '@/contexts/OrbitDBContext';
+import { PeerDiscoveryProvider } from '@/contexts/PeerDiscoveryContext';
 
 // Import components
 import WebSocketStatus from '@/components/WebSocketStatus';
@@ -161,6 +162,7 @@ function App() {
           <WebSocketProvider>
             <IPFSProvider>
               <OrbitDBProvider>
+                <PeerDiscoveryProvider>
                 <div className="min-h-screen flex flex-col">
                   {/* Status Bar */}
                   <div className="bg-gray-100 dark:bg-gray-800 py-1 px-4 flex justify-end items-center text-sm border-b">
@@ -192,6 +194,7 @@ function App() {
                   {/* Toast notifications */}
                   <Toaster />
                 </div>
+                </PeerDiscoveryProvider>
               </OrbitDBProvider>
             </IPFSProvider>
           </WebSocketProvider>

@@ -11,12 +11,16 @@ import {
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { setupPeerServer, getPeersOnSameNetwork } from "./peerServer";
 
 // WebSocket connections by user
 const wsConnections = new Map<number, Set<WebSocket>>();
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Setup PeerJS server for peer discovery and WebRTC signaling
+  setupPeerServer(app, httpServer);
   
   // Setup WebSocket server for real-time updates
   // Use a specific path to avoid conflicts with Vite's WebSocket
