@@ -11,7 +11,7 @@ import {
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { setupPeerServer, getPeersOnSameNetwork } from "./peerServer";
+import { setupPeerServer, getPeersOnSameNetwork, connectedPeers } from "./peerServer";
 
 // WebSocket connections by user
 const wsConnections = new Map<number, Set<WebSocket>>();
@@ -361,6 +361,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(connections);
     } catch (error) {
       res.status(500).json({ message: "Server error fetching peer connections" });
+    }
+  });
+  
+  // Register a peer with user info
+  app.post("/api/peers/register", async (req: Request, res: Response) => {
+    try {
+      const { peerId, userId, displayName, deviceType } = req.body;
+      
+      if (!peerId || !userId) {
+        return res.status(400).json({ message: "Peer ID and User ID are required" });
+      }
+      
+      // Associate peer with user ID
+      const peer = connectedPeers.get(peerId);
+      
+      if (peer) {
+        // Update existing peer
+        peer.userId = userId;
+        peer.lastSeen = new Date();
+        connectedPeers.set(peerId, peer);
+      } else {
+        // Add a new peer even if not connected via PeerJS yet
+        connectedPeers.set(peerId, {
+          id: peerId,
+          ip: req.ip || req.socket.remoteAddress || '',
+          lastSeen: new Date(),
+          userId: userId
+        });
+      }
+      
+      res.status(200).json({ success: true, peerId });
+    } catch (error) {
+      res.status(500).json({ message: "Server error registering peer" });
+    }
+  });
+  
+  // Get all discoverable peers except your own
+  app.get("/api/peers/discover", async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.query.userId as string);
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      const allPeers = Array.from(connectedPeers.values());
+      
+      // Filter out peers belonging to the current user
+      const discoverablePeers = allPeers.filter(peer => peer.userId !== userId);
+      
+      // Get user info for each peer
+      const peersWithInfo = await Promise.all(discoverablePeers.map(async (peer) => {
+        if (peer.userId) {
+          const user = await storage.getUser(peer.userId);
+          return {
+            peerId: peer.id,
+            userId: peer.userId,
+            displayName: user?.displayName || 'Unknown User',
+            deviceType: 'unknown',
+            lastSeen: peer.lastSeen
+          };
+        }
+        return null;
+      }));
+      
+      // Filter out nulls
+      const validPeers = peersWithInfo.filter(Boolean);
+      
+      res.status(200).json(validPeers);
+    } catch (error) {
+      res.status(500).json({ message: "Server error discovering peers" });
     }
   });
 
