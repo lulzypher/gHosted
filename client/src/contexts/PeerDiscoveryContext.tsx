@@ -111,19 +111,33 @@ export const PeerDiscoveryProvider: React.FC<{ children: ReactNode }> = ({ child
           
           // Add demo peers immediately for testing
           console.log('Adding demo peers for testing...');
-          setLocalPeers(prev => {
-            const updatedPeers = [...prev];
-            if (!updatedPeers.some(p => p.id === 'demo-tablet-peer')) {
-              updatedPeers.push({
-                id: 'demo-tablet-peer',
-                displayName: 'Demo Tablet',
-                deviceType: 'tablet',
-                status: 'discovered',
-                lastSeen: new Date()
+          setTimeout(() => {
+            setLocalPeers(prev => {
+              const updatedPeers = [...prev];
+              
+              // Add demo peers with different device types for testing
+              const demoPeers = [
+                { id: 'demo-tablet-peer', displayName: 'Demo Tablet', deviceType: 'tablet' },
+                { id: 'demo-laptop-peer', displayName: 'Demo Laptop', deviceType: 'desktop' },
+                { id: 'demo-phone-peer', displayName: 'Demo Phone', deviceType: 'mobile' }
+              ];
+              
+              // Add each demo peer if not already present
+              demoPeers.forEach(demoPeer => {
+                if (!updatedPeers.some(p => p.id === demoPeer.id)) {
+                  updatedPeers.push({
+                    id: demoPeer.id,
+                    displayName: demoPeer.displayName,
+                    deviceType: demoPeer.deviceType,
+                    status: 'discovered',
+                    lastSeen: new Date()
+                  });
+                }
               });
-            }
-            return updatedPeers;
-          });
+              
+              return updatedPeers;
+            });
+          }, 250);
         } catch (error) {
           console.error('Failed to register peer with server:', error);
           
@@ -429,24 +443,49 @@ export const PeerDiscoveryProvider: React.FC<{ children: ReactNode }> = ({ child
       console.error('Error fetching peer list:', error);
       
       // If the API call fails, use simulated peers as a fallback
-      if (isDiscovering && (!localPeers || localPeers.length === 0)) {
+      if (isDiscovering) {
         console.log('API error, adding simulated peers for testing');
-        setLocalPeers([
-          {
-            id: `peer-${Math.random().toString(36).substring(2, 8)}`,
-            displayName: 'Fallback Mobile',
-            deviceType: 'mobile',
-            status: 'discovered',
-            lastSeen: new Date()
-          },
-          {
-            id: `peer-${Math.random().toString(36).substring(2, 8)}`,
-            displayName: 'Fallback Desktop',
-            deviceType: 'desktop',
-            status: 'discovered',
-            lastSeen: new Date()
-          }
-        ]);
+        setTimeout(() => {
+          setLocalPeers(prev => {
+            // If we have some peers already, just add the new ones
+            const existingPeers = [...prev];
+            
+            // Define our fallback peers
+            const fallbackPeers = [
+              {
+                id: `mobile-${Math.random().toString(36).substring(2, 6)}`,
+                displayName: 'Fallback Phone',
+                deviceType: 'mobile',
+                status: 'discovered',
+                lastSeen: new Date()
+              },
+              {
+                id: `desktop-${Math.random().toString(36).substring(2, 6)}`,
+                displayName: 'Fallback Laptop',
+                deviceType: 'desktop',
+                status: 'discovered',
+                lastSeen: new Date()
+              },
+              {
+                id: `tablet-${Math.random().toString(36).substring(2, 6)}`,
+                displayName: 'Fallback Tablet',
+                deviceType: 'tablet',
+                status: 'discovered',
+                lastSeen: new Date()
+              }
+            ];
+            
+            // Add fallback peers if needed
+            fallbackPeers.forEach(fallbackPeer => {
+              // Only add if we don't have another peer of same device type
+              if (!existingPeers.some(p => p.deviceType === fallbackPeer.deviceType)) {
+                existingPeers.push(fallbackPeer);
+              }
+            });
+            
+            return existingPeers;
+          });
+        }, 300);
       }
     }
   };
@@ -581,12 +620,14 @@ export const PeerDiscoveryProvider: React.FC<{ children: ReactNode }> = ({ child
     });
   };
   
-  // Initialize peer connection when component mounts or user/IPFS status changes
+  // Initialize peer connection when component mounts or user status changes
+  // We no longer require IPFS to be ready
   useEffect(() => {
-    if (user && isIPFSReady && !peer) {
+    if (user && !peer) {
+      console.log('Initializing peer network - IPFS ready:', isIPFSReady);
       initializePeer();
     }
-  }, [user, isIPFSReady, peer, initializePeer]);
+  }, [user, peer, initializePeer]);
   
   // Clean up when component unmounts
   useEffect(() => {
