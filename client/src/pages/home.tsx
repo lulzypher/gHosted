@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 import { NetworkStatus } from '@/types';
 import Header from '@/components/Header';
+import LocalPeers from '@/components/LocalPeers';
 
 // This is a placeholder home page that shows our network status functionality
 const HomePage: React.FC = () => {
@@ -72,6 +73,13 @@ const HomePage: React.FC = () => {
               </div>
             )}
           </div>
+          
+          {/* Local Peers Section */}
+          {user && (
+            <div className="mb-6">
+              <LocalPeers />
+            </div>
+          )}
           
           {/* App Description */}
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
