@@ -3,6 +3,11 @@
  * This is a simplified version that uses browser storage (IndexedDB) when actual IPFS isn't available
  */
 
+// Fix for process not defined in browser environment
+if (typeof window !== 'undefined' && typeof process === 'undefined') {
+  window.process = { env: {} } as any;
+}
+
 import { v4 as uuidv4 } from 'uuid';
 import { IPFSStats } from '@/types';
 import { CID } from 'multiformats/cid';
@@ -59,10 +64,13 @@ export class MockIPFSClient {
   private async saveToStorage(key: string, data: any): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        localStorage.setItem(`mockipfs-${key}`, JSON.stringify(data));
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(`mockipfs-${key}`, JSON.stringify(data));
+        }
         resolve();
       } catch (error) {
-        reject(error);
+        console.warn(`Could not save ${key} to localStorage:`, error);
+        resolve(); // Don't reject, just continue
       }
     });
   }
@@ -70,10 +78,14 @@ export class MockIPFSClient {
   private async getFromStorage(key: string): Promise<any> {
     return new Promise((resolve) => {
       try {
-        const data = localStorage.getItem(`mockipfs-${key}`);
-        resolve(data ? JSON.parse(data) : null);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const data = window.localStorage.getItem(`mockipfs-${key}`);
+          resolve(data ? JSON.parse(data) : null);
+        } else {
+          resolve(null);
+        }
       } catch (error) {
-        console.error(`Error getting ${key} from storage:`, error);
+        console.warn(`Error getting ${key} from storage:`, error);
         resolve(null);
       }
     });

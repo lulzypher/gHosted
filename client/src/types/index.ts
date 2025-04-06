@@ -14,9 +14,10 @@ export enum SyncStatus {
 
 // Pin type enumeration
 export enum PinType {
-  LOCAL = 'local',    // Pin to local device only (Heart reaction)
-  REMOTE = 'remote',  // Pin to remote devices as well (Fire Heart reaction)
-  ALL = 'all'         // Matches either type for querying purposes
+  LOCAL = 'local',    // Pin to local device only (Heart reaction ❤️)
+  REMOTE = 'remote',  // Pin to remote devices as well (Fire Heart reaction ❤️‍🔥)
+  LOVE = 'love',      // The love-heart-fire reaction (alias for REMOTE)
+  ALL = 'all'         // Matches any type for querying purposes
 }
 
 // Device type enumeration
@@ -45,6 +46,9 @@ export interface IPFSStats {
   pinnedCount?: number; // Count of pinned contents
   numPins?: number; // Number of pinned items (alias for pinnedCount)
   allocatedSize?: number; // Total allocated storage size
+  usedSize?: number; // Used storage size for direct IPFS
+  isConnected?: boolean; // Whether connected to IPFS network
+  lastSync?: Date | null; // Last time content was synced
 }
 
 // User interface

@@ -90,7 +90,9 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             console.log('Falling back to mock IPFS implementation...');
             // Forces mock implementation on next attempt
-            localStorage.setItem('use-mock-ipfs', 'true');
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('use-mock-ipfs', 'true');
+            }
             
             const ipfsInstance = await initIPFS();
             setIpfs(ipfsInstance);
@@ -199,8 +201,8 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStats(updatedStats);
       
       toast({
-        title: pinType === PinType.LOVE ? "Loved Content" : "Liked Content",
-        description: `Content has been pinned to your ${pinType === PinType.LOVE ? "devices" : "PC"}.`,
+        title: pinType === PinType.LOVE || pinType === PinType.REMOTE ? "Loved Content" : "Liked Content",
+        description: `Content has been pinned to your ${pinType === PinType.LOVE || pinType === PinType.REMOTE ? "devices" : "PC"}.`,
       });
     } catch (error) {
       console.error('Error pinning content:', error);
@@ -245,7 +247,14 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if content is pinned
   const isContentPinned = (contentCid: string, pinType?: PinType): boolean => {
     if (pinType) {
-      // Check for specific pin type
+      // Check for specific pin type, with special handling for LOVE and REMOTE which are equivalent
+      if (pinType === PinType.LOVE || pinType === PinType.REMOTE) {
+        return pinnedContents.some(
+          content => content.contentCid === contentCid && 
+                    (content.pinType === PinType.REMOTE || content.pinType === PinType.LOVE)
+        );
+      }
+      
       return pinnedContents.some(
         content => content.contentCid === contentCid && content.pinType === pinType
       );
