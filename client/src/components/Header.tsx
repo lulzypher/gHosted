@@ -7,45 +7,45 @@ export function Header() {
   const { user } = useAuth();
   
   return (
-    <header className="sticky top-0 z-10 w-full bg-background border-b border-border/40 dark:border-border/20 shadow-sm">
+    <header className="sticky top-0 z-10 w-full bg-[#242526] border-b border-[#3a3b3c] shadow-sm">
       <div className="container flex h-14 max-w-screen-2xl items-center">
         <div className="flex items-center mr-4">
           <Link href="/">
-            <a className="flex items-center space-x-2">
-              <span className="text-2xl font-semibold text-primary">gHosted</span>
-              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-medium">
+            <div className="flex items-center space-x-2 cursor-pointer">
+              <span className="text-2xl font-semibold text-[#3499f0]">gHosted</span>
+              <span className="bg-[#3499f0]/10 text-[#3499f0] px-2 py-0.5 rounded-full text-xs font-medium">
                 Online
               </span>
-            </a>
+            </div>
           </Link>
         </div>
         
         <div className="flex-1 flex items-center justify-center px-2">
           <div className="w-full max-w-md relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#b0b3b8]" />
             <input
               type="search"
               placeholder="Search gHosted"
-              className="w-full bg-muted/50 dark:bg-muted/20 rounded-full py-2 pl-8 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full bg-[#3a3b3c] rounded-full py-2 pl-8 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#3499f0] text-[#e4e6eb] placeholder:text-[#b0b3b8]"
             />
           </div>
         </div>
         
         <div className="flex items-center gap-2">
-          <button className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/50">
+          <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
             <MessageSquare className="h-5 w-5" />
           </button>
-          <button className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/50 relative">
+          <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c] relative">
             <Bell className="h-5 w-5" />
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[0.65rem] font-medium text-primary-foreground">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#3499f0] text-[0.65rem] font-medium text-white">
               2
             </span>
           </button>
-          <button className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/50">
+          <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
             <Settings className="h-5 w-5" />
           </button>
           <Link href="/profile">
-            <a className="ml-2 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border/50 hover:border-border">
+            <div className="ml-2 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[#3a3b3c] hover:border-[#4e4f50] cursor-pointer">
               {user?.avatarCid ? (
                 <img
                   src={`https://ipfs.io/ipfs/${user.avatarCid}`}
@@ -53,11 +53,11 @@ export function Header() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                <div className="h-full w-full bg-[#3a3b3c] flex items-center justify-center text-[#e4e6eb] font-medium">
                   {user?.displayName?.charAt(0) || user?.username?.charAt(0) || '?'}
                 </div>
               )}
-            </a>
+            </div>
           </Link>
         </div>
       </div>

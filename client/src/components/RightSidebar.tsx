@@ -55,22 +55,22 @@ export function RightSidebar() {
   ];
   
   return (
-    <div className="w-full max-w-[280px] h-[calc(100vh-3.5rem)] overflow-y-auto flex flex-col bg-background border-l border-border/20 dark:border-border/10 py-4">
+    <div className="w-full max-w-[280px] h-[calc(100vh-3.5rem)] overflow-y-auto flex flex-col bg-[#18191a] border-l border-[#3a3b3c] py-4">
       <div className="px-4 mb-4">
-        <h2 className="text-foreground font-semibold text-lg mb-3">Network</h2>
+        <h2 className="text-[#e4e6eb] font-semibold text-lg mb-3">Network</h2>
         
-        <div className="bg-card dark:bg-card/90 rounded-lg p-3 space-y-3">
+        <div className="bg-[#242526] rounded-lg p-3 space-y-3">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-medium text-foreground">Active Peers</h3>
-              <span className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
+              <h3 className="text-sm font-medium text-[#e4e6eb]">Active Peers</h3>
+              <span className="bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
                 {onlinePeers.length} Online
               </span>
             </div>
             
             <div className="flex -space-x-2 overflow-hidden">
               {onlinePeers.slice(0, 5).map((peer) => (
-                <div key={peer.id} className="h-8 w-8 rounded-full ring-2 ring-background overflow-hidden">
+                <div key={peer.id} className="h-8 w-8 rounded-full ring-2 ring-[#18191a] overflow-hidden">
                   {peer.avatar ? (
                     <img
                       src={`https://ipfs.io/ipfs/${peer.avatar}`}
@@ -78,38 +78,38 @@ export function RightSidebar() {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                    <div className="h-full w-full bg-[#3a3b3c] flex items-center justify-center text-[#e4e6eb] font-medium">
                       {peer.name.charAt(0)}
                     </div>
                   )}
                 </div>
               ))}
               {onlinePeers.length > 5 && (
-                <div className="h-8 w-8 rounded-full ring-2 ring-background flex items-center justify-center bg-muted/70 dark:bg-muted/30 text-xs font-medium text-foreground">
+                <div className="h-8 w-8 rounded-full ring-2 ring-[#18191a] flex items-center justify-center bg-[#3a3b3c] text-xs font-medium text-[#e4e6eb]">
                   +{onlinePeers.length - 5}
                 </div>
               )}
             </div>
           </div>
           
-          <div className="pt-2 border-t border-border/10">
+          <div className="pt-2 border-t border-[#3a3b3c]">
             <div className="flex justify-between items-center mb-1">
-              <span className="text-sm text-foreground">Shared Files</span>
-              <span className="text-sm font-medium text-foreground">142</span>
+              <span className="text-sm text-[#e4e6eb]">Shared Files</span>
+              <span className="text-sm font-medium text-[#e4e6eb]">142</span>
             </div>
           </div>
           
-          <div className="pt-2 border-t border-border/10">
+          <div className="pt-2 border-t border-[#3a3b3c]">
             <div className="flex justify-between items-center mb-1">
-              <span className="text-sm text-foreground">Total Storage Used</span>
-              <span className="text-sm font-medium text-foreground">1.2 GB</span>
+              <span className="text-sm text-[#e4e6eb]">Total Storage Used</span>
+              <span className="text-sm font-medium text-[#e4e6eb]">1.2 GB</span>
             </div>
           </div>
           
-          <div className="pt-2 border-t border-border/10">
+          <div className="pt-2 border-t border-[#3a3b3c]">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-foreground">Network Health</span>
-              <span className="text-sm font-medium text-green-600 dark:text-green-400">Good</span>
+              <span className="text-sm text-[#e4e6eb]">Network Health</span>
+              <span className="text-sm font-medium text-green-400">Good</span>
             </div>
           </div>
         </div>
@@ -117,9 +117,9 @@ export function RightSidebar() {
       
       <div className="px-4">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="text-foreground font-semibold text-lg">Pinned Content</h2>
+          <h2 className="text-[#e4e6eb] font-semibold text-lg">Pinned Content</h2>
           <Link href="/pinned">
-            <a className="text-xs text-primary hover:underline flex items-center">
+            <a className="text-xs text-[#3499f0] hover:underline flex items-center">
               View All
               <ChevronRight className="h-3 w-3 ml-0.5" />
             </a>
@@ -129,7 +129,7 @@ export function RightSidebar() {
         <div className="space-y-3">
           {pinnedContents.map((content) => (
             <Link key={content.id} href={`/content/${content.cid}`}>
-              <a className="block bg-card dark:bg-card/90 hover:bg-muted/50 hover:dark:bg-muted/10 rounded-lg overflow-hidden transition-colors">
+              <a className="block bg-[#242526] hover:bg-[#3a3b3c]/70 rounded-lg overflow-hidden transition-colors">
                 {content.imageCid ? (
                   <div className="aspect-video w-full overflow-hidden relative">
                     <img
@@ -143,12 +143,12 @@ export function RightSidebar() {
                   </div>
                 ) : (
                   <div className="h-16 flex items-center p-3">
-                    <div className="w-10 h-10 rounded flex items-center justify-center bg-primary/10 text-primary mr-3">
+                    <div className="w-10 h-10 rounded flex items-center justify-center bg-[#3a3b3c] text-[#3499f0] mr-3">
                       <Info className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-medium text-foreground truncate">{content.title}</h3>
-                      <p className="text-xs text-muted-foreground truncate">
+                      <h3 className="text-sm font-medium text-[#e4e6eb] truncate">{content.title}</h3>
+                      <p className="text-xs text-[#b0b3b8] truncate">
                         {content.cid.substring(0, 8)}...
                       </p>
                     </div>
@@ -156,8 +156,8 @@ export function RightSidebar() {
                 )}
                 {content.imageCid && (
                   <div className="p-2">
-                    <h3 className="text-sm font-medium text-foreground">{content.title}</h3>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <h3 className="text-sm font-medium text-[#e4e6eb]">{content.title}</h3>
+                    <p className="text-xs text-[#b0b3b8] truncate">
                       {content.cid.substring(0, 10)}...
                     </p>
                   </div>
@@ -169,7 +169,7 @@ export function RightSidebar() {
       </div>
       
       <div className="mt-auto px-4">
-        <div className="text-xs text-center text-muted-foreground pt-4 border-t border-border/10 dark:border-border/5">
+        <div className="text-xs text-center text-[#b0b3b8] pt-4 border-t border-[#3a3b3c]">
           <p>All content is stored on IPFS</p>
           <p className="mt-1">gHosted v0.1.0-alpha</p>
         </div>
