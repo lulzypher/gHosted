@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast'; 
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { ProtectedRoute } from '@/lib/protected-route';
+import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
 
 // Landing page for unauthenticated users
 const LandingPage = () => (
@@ -115,6 +116,12 @@ const AuthPage = () => {
     confirmPassword: '',
   });
   
+  // Import the crypto identity hook
+  const { 
+    generateNewKeys, 
+    isGeneratingKeys
+  } = useCryptoIdentity();
+  
   const navigate = useLocation()[1];
   
   // Redirect if already logged in
@@ -164,11 +171,21 @@ const AuthPage = () => {
     
     setIsLoading(true);
     
-    // Generate random values for the required fields
-    const publicKey = crypto.randomUUID();
-    const did = 'did:key:' + crypto.randomUUID();
-    
     try {
+      // Generate proper cryptographic keys
+      toast({
+        title: "Generating cryptographic keys",
+        description: "This may take a moment...",
+      });
+      
+      const { publicKey, did, encryptedPrivateKey } = await generateNewKeys(formData.password);
+      
+      toast({
+        title: "Keys generated successfully",
+        description: "Creating your account...",
+      });
+      
+      // Register with proper cryptographic identity
       await registerMutation.mutateAsync({
         username: formData.username,
         password: formData.password,
@@ -176,10 +193,22 @@ const AuthPage = () => {
         publicKey,
         did
       });
+      
+      toast({
+        title: "Welcome to gHosted!",
+        description: "Your account has been created with secure cryptographic identity.",
+        variant: "default"
+      });
+      
       navigate('/');
     } catch (error) {
       // Error handled by mutation
       console.error('Registration error:', error);
+      toast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive"
+      });
     } finally {
       setIsLoading(false);
     }
