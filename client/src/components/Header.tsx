@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Ghost, Search, HardDrive, Bell, LogOut, User, Settings } from 'lucide-react';
+import { Ghost, Search, HardDrive, Bell, LogOut, User, Settings, Activity } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, logout } = useUser();
