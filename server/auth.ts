@@ -41,7 +41,7 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   username: z.string().min(3).max(30),
   password: z.string().min(6),
-  displayName: z.string().min(2).max(50).optional(),
+  displayName: z.string().min(2).max(50),
   bio: z.string().max(200).optional(),
   did: z.string(),
   publicKey: z.string(),
