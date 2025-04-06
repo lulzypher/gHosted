@@ -38,7 +38,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Determine WebSocket URL based on current protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/ws?userId=${user.id}`;
 
     // Create new WebSocket connection
     try {

@@ -8,7 +8,7 @@ import {
   insertPinnedContentSchema,
   insertPeerConnectionSchema
 } from "@shared/schema";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -19,7 +19,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
   // Setup WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server: httpServer });
+  // Use a specific path to avoid conflicts with Vite's WebSocket
+  const wss = new WebSocketServer({ 
+    server: httpServer,
+    path: '/api/ws'
+  });
   
   wss.on("connection", (ws: WebSocket, req) => {
     // Extract user ID from the request
@@ -33,8 +37,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       wsConnections.get(userId)?.add(ws);
       
-      // Handle connection close
-      ws.on("close", () => {
+      // Handle connection close using the event listener
+      ws.addEventListener("close", () => {
         wsConnections.get(userId)?.delete(ws);
         if (wsConnections.get(userId)?.size === 0) {
           wsConnections.delete(userId);
@@ -302,6 +306,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // HEALTH CHECK ROUTE
+  app.get('/api/healthcheck', (req: Request, res: Response) => {
+    res.status(200).json({ 
+      status: 'ok', 
+      time: new Date().toISOString(),
+      wsPath: '/api/ws',
+      wsConnections: wsConnections.size
+    });
+  });
+
   // PEER CONNECTION ROUTES
   
   // Register a peer connection
