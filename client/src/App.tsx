@@ -8,6 +8,8 @@ import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { ProtectedRoute } from '@/lib/protected-route';
 import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
 import { PeerDiscoveryProvider } from '@/contexts/PeerDiscoveryContext';
+import { SyncProvider } from '@/contexts/SyncContext';
+import { ConflictResolution } from '@/components/ConflictResolution';
 import HomePageContent from '@/pages/home-page';
 
 // Landing page for unauthenticated users
@@ -310,13 +312,17 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <PeerDiscoveryProvider>
-          <Switch>
-            <ProtectedRoute path="/" component={HomePage} />
-            <Route path="/auth" component={AuthPage} />
-            <Route path="/about" component={AboutPage} />
-            <Route component={NotFoundPage} />
-          </Switch>
-          <Toaster />
+          <SyncProvider>
+            <Switch>
+              <ProtectedRoute path="/" component={HomePage} />
+              <Route path="/auth" component={AuthPage} />
+              <Route path="/about" component={AboutPage} />
+              <Route component={NotFoundPage} />
+            </Switch>
+            {/* Show conflict resolution dialog when needed */}
+            <ConflictResolution />
+            <Toaster />
+          </SyncProvider>
         </PeerDiscoveryProvider>
       </AuthProvider>
     </QueryClientProvider>

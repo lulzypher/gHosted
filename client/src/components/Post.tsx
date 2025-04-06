@@ -1,159 +1,154 @@
-import React, { useState } from 'react';
-import { Link } from 'wouter';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Save } from 'lucide-react';
+import React from 'react';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Heart, Bookmark, MessageCircle, MoreHorizontal, HeartHandshake, CloudOff } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useSync } from '@/contexts/SyncContext';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export interface PostType {
   id: number;
+  cid: string;
   authorId: number;
   authorName: string;
   authorUsername: string;
-  authorAvatar?: string;
   content: string;
-  mediaCid?: string;
   createdAt: string;
-  cid: string;
+  mediaUrl?: string;
   likes: number;
-  comments: number;
-  reposts: number;
-  isLiked?: boolean;
-  isLoved?: boolean;
+  commentCount: number;
+  hasConflict?: boolean;
+  deleted?: boolean;
+  synced?: boolean;
 }
 
-export function Post({ post }: { post: PostType }) {
-  const [liked, setLiked] = useState(post.isLiked || false);
-  const [loved, setLoved] = useState(post.isLoved || false);
-  const [likeCount, setLikeCount] = useState(post.likes);
+interface PostCardProps {
+  post: PostType;
+  onDelete?: (cid: string) => void;
+  onPin?: (cid: string, type: 'pc' | 'both') => void;
+}
+
+export function PostCard({ post, onDelete, onPin }: PostCardProps) {
+  const { isOffline } = useSync();
   
-  const handleLike = () => {
-    if (liked) {
-      setLiked(false);
-      setLikeCount(prev => prev - 1);
-    } else {
-      setLiked(true);
-      setLikeCount(prev => prev + 1);
-    }
+  const isLocalOnly = post.cid.startsWith('local-');
+  const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
+  
+  const handlePin = (type: 'pc' | 'both') => {
+    if (onPin) onPin(post.cid, type);
   };
   
-  const handleLove = () => {
-    setLoved(prev => !prev);
-  };
-  
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+  const handleDelete = () => {
+    if (onDelete) onDelete(post.cid);
   };
   
   return (
-    <div className="bg-[#242526] rounded-lg shadow-sm mb-4 overflow-hidden">
-      <div className="p-4">
-        <div className="flex justify-between items-start mb-3">
-          <div className="flex items-center space-x-3">
-            <Link href={`/profile/${post.authorId}`}>
-              <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-[#3a3b3c] cursor-pointer">
-                {post.authorAvatar ? (
-                  <img
-                    src={`https://ipfs.io/ipfs/${post.authorAvatar}`}
-                    alt={post.authorName}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full w-full bg-[#3a3b3c] flex items-center justify-center text-[#e4e6eb] font-medium">
-                    {post.authorName.charAt(0)}
-                  </div>
-                )}
-              </div>
-            </Link>
-            <div>
-              <Link href={`/profile/${post.authorId}`}>
-                <div className="font-medium text-[#e4e6eb] hover:underline cursor-pointer">
-                  {post.authorName}
-                </div>
-              </Link>
-              <div className="flex items-center text-xs text-[#b0b3b8]">
-                <span className="mr-1">@{post.authorUsername}</span>
+    <Card className={`mb-4 ${post.hasConflict ? 'border-amber-300 dark:border-amber-800' : ''} ${isLocalOnly ? 'border-blue-300 dark:border-blue-800' : ''}`}>
+      <CardHeader className="flex flex-row items-center gap-4 p-4 pb-3">
+        <Avatar className="h-10 w-10">
+          <AvatarImage src="" alt={post.authorName} />
+          <AvatarFallback>
+            {post.authorName.substring(0, 2).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1">
+          <div className="font-semibold">{post.authorName}</div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
+            @{post.authorUsername} • {timeAgo}
+            {isLocalOnly && (
+              <>
                 <span className="mx-1">•</span>
-                <span>{formatDate(post.createdAt)}</span>
-                {post.cid && (
-                  <>
-                    <span className="mx-1">•</span>
-                    <span className="inline-flex items-center bg-[#3a3b3c] px-1.5 py-0.5 rounded text-[0.65rem]">
-                      {post.cid.substring(0, 6)}...
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
+                <span className="text-blue-500 dark:text-blue-400 inline-flex items-center gap-0.5">
+                  <CloudOff className="h-3 w-3" />
+                  Local only
+                </span>
+              </>
+            )}
+            {post.hasConflict && (
+              <span className="ml-1 text-amber-500 dark:text-amber-400 text-xs">• Conflict</span>
+            )}
           </div>
-          <button className="p-1 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
-            <MoreHorizontal className="h-5 w-5" />
-          </button>
         </div>
-        
-        <div className="mb-3">
-          <p className="text-[#e4e6eb] whitespace-pre-line">{post.content}</p>
-        </div>
-        
-        {post.mediaCid && (
-          <div className="my-3 rounded-lg overflow-hidden bg-[#3a3b3c]">
-            <img
-              src={`https://ipfs.io/ipfs/${post.mediaCid}`}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">More options</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handlePin('pc')}>
+              <Heart className="h-4 w-4 mr-2" />
+              Pin to PC
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handlePin('both')}>
+              <HeartHandshake className="h-4 w-4 mr-2" />
+              Pin to PC & Mobile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDelete}>
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 pb-3">
+        <p className="whitespace-pre-line">{post.content}</p>
+        {post.mediaUrl && (
+          <div className="mt-3 rounded-md overflow-hidden">
+            <img 
+              src={post.mediaUrl} 
               alt="Post media"
-              className="w-full h-auto object-cover max-h-96"
+              className="w-full h-auto object-cover"
             />
           </div>
         )}
-        
-        <div className="flex items-center text-xs text-[#b0b3b8] pt-2">
-          <div className="flex items-center mr-4">
-            <Heart className="h-3.5 w-3.5 mr-1 fill-rose-500 text-rose-500" />
-            <span>{likeCount}</span>
-          </div>
-          <div className="mr-4">
-            <span>{post.comments} comments</span>
-          </div>
-          <div>
-            <span>{post.reposts} reposts</span>
-          </div>
+      </CardContent>
+      <CardFooter className="p-2 flex justify-between border-t">
+        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+          <MessageCircle className="h-4 w-4" />
+          <span>{post.commentCount}</span>
+        </Button>
+        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => handlePin('pc')}>
+          <Heart className="h-4 w-4" />
+          <span>{post.likes}</span>
+        </Button>
+        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => handlePin('both')}>
+          <HeartHandshake className="h-4 w-4" />
+          <span>Pin</span>
+        </Button>
+        <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Bookmark className="h-4 w-4" />
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+export function PostSkeleton() {
+  return (
+    <Card className="mb-4">
+      <CardHeader className="flex flex-row items-center gap-4 p-4 pb-3">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-32" />
         </div>
-      </div>
-      
-      <div className="flex border-t border-[#3a3b3c] divide-x divide-[#3a3b3c]">
-        <button
-          onClick={handleLike}
-          className={`flex items-center justify-center py-2.5 flex-1 text-sm font-medium ${
-            liked
-              ? 'text-rose-500'
-              : 'text-[#b0b3b8] hover:text-[#e4e6eb] hover:bg-[#3a3b3c]'
-          }`}
-        >
-          <Heart className={`h-4 w-4 mr-2 ${liked ? 'fill-rose-500 text-rose-500' : ''}`} />
-          Like
-        </button>
-        <button
-          onClick={handleLove}
-          className={`flex items-center justify-center py-2.5 flex-1 text-sm font-medium ${
-            loved
-              ? 'text-[#3499f0]'
-              : 'text-[#b0b3b8] hover:text-[#e4e6eb] hover:bg-[#3a3b3c]'
-          }`}
-        >
-          <Save className={`h-4 w-4 mr-2 ${loved ? 'fill-[#3499f0] text-[#3499f0]' : ''}`} />
-          {loved ? 'Saved to PC+Mobile' : 'Save to PC'}
-        </button>
-        <button className="flex items-center justify-center py-2.5 flex-1 text-sm font-medium text-[#b0b3b8] hover:text-[#e4e6eb] hover:bg-[#3a3b3c]">
-          <MessageCircle className="h-4 w-4 mr-2" />
-          Comment
-        </button>
-        <button className="flex items-center justify-center py-2.5 flex-1 text-sm font-medium text-[#b0b3b8] hover:text-[#e4e6eb] hover:bg-[#3a3b3c]">
-          <Share2 className="h-4 w-4 mr-2" />
-          Share
-        </button>
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 pb-3">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </CardContent>
+      <CardFooter className="p-2 flex justify-between border-t">
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-8 w-8" />
+      </CardFooter>
+    </Card>
   );
 }

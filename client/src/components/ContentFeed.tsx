@@ -1,77 +1,135 @@
 import React from 'react';
-import { usePosts } from '@/hooks/use-posts';
-import CreatePost from './CreatePost';
-import Post from './Post';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useOfflineContent } from '@/hooks/use-offline-content';
+import { PostCard, PostSkeleton } from '@/components/Post';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Loader2, RefreshCw, WifiOff } from 'lucide-react';
+import { useSync } from '@/contexts/SyncContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
-const ContentFeed: React.FC = () => {
-  const { posts, isLoadingPosts, postsError } = usePosts();
-
+export function ContentFeed() {
+  const { posts, loading, createPost, deletePost, refreshPosts } = useOfflineContent();
+  const { isOffline, triggerSync } = useSync();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  const handleDelete = async (cid: string) => {
+    await deletePost(cid);
+  };
+  
+  const handlePin = async (cid: string, type: 'pc' | 'both') => {
+    try {
+      // Make API call to pin content
+      await fetch(`/api/pinned-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cid,
+          type,
+        }),
+      });
+      
+      toast({
+        title: `Content pinned`,
+        description: type === 'pc' 
+          ? 'Content will be preserved on your PC' 
+          : 'Content will be preserved on both PC and mobile',
+      });
+      
+      // Refresh posts to update UI
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+    } catch (error) {
+      console.error('Error pinning content:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to pin content',
+        variant: 'destructive',
+      });
+    }
+  };
+  
+  const handleRefresh = async () => {
+    if (isOffline) {
+      toast({
+        title: 'Offline mode',
+        description: 'You can only view local content while offline',
+      });
+      return;
+    }
+    
+    try {
+      await refreshPosts();
+      await triggerSync();
+    } catch (error) {
+      console.error('Error refreshing feed:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to refresh feed',
+        variant: 'destructive',
+      });
+    }
+  };
+  
   return (
-    <div className="flex-1 space-y-4 max-w-2xl mx-auto w-full">
-      {/* Create Post Component */}
-      <CreatePost />
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold">Feed</h2>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleRefresh}
+          disabled={loading}
+          className="flex items-center gap-1"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh
+        </Button>
+      </div>
       
-      {/* Loading State */}
-      {isLoadingPosts && (
-        <>
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm p-4 space-y-4">
-              <div className="flex items-start space-x-3">
-                <Skeleton className="h-10 w-10 rounded-full" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-1/3" />
-                  <Skeleton className="h-3 w-1/4" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-48 w-full rounded-lg" />
-              </div>
-              <div className="pt-2 flex justify-between">
-                <Skeleton className="h-8 w-1/4" />
-                <Skeleton className="h-8 w-1/4" />
-                <Skeleton className="h-8 w-1/4" />
-                <Skeleton className="h-8 w-1/4" />
-              </div>
-            </div>
-          ))}
-        </>
+      {isOffline && (
+        <Alert variant="warning" className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+          <WifiOff className="h-4 w-4" />
+          <AlertTitle>You're offline</AlertTitle>
+          <AlertDescription>
+            You're viewing content that's available locally on your device. New content will be synchronized when you reconnect.
+          </AlertDescription>
+        </Alert>
       )}
       
-      {/* Error State */}
-      {postsError && (
-        <div className="bg-white rounded-xl shadow-sm p-4">
-          <p className="text-red-500 text-center">
-            Error loading posts. Please try again later.
-          </p>
-          <p className="text-gray-500 text-center text-sm mt-2">
-            {postsError instanceof Error ? postsError.message : 'Unknown error'}
-          </p>
+      {loading ? (
+        <div className="space-y-4">
+          <PostSkeleton />
+          <PostSkeleton />
+          <PostSkeleton />
         </div>
-      )}
-      
-      {/* Empty State */}
-      {!isLoadingPosts && !postsError && posts.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-4 text-center">
-          <h3 className="font-semibold mb-2">No Posts Yet</h3>
-          <p className="text-gray-500">
-            Be the first to create a post and share with the network!
-          </p>
-        </div>
-      )}
-      
-      {/* Posts */}
-      {!isLoadingPosts && !postsError && posts.length > 0 && (
-        <>
+      ) : posts.length > 0 ? (
+        <div className="space-y-4">
           {posts.map((post) => (
-            <Post key={post.id} post={post} />
+            <PostCard 
+              key={post.cid} 
+              post={post} 
+              onDelete={handleDelete}
+              onPin={handlePin}
+            />
           ))}
-        </>
+        </div>
+      ) : (
+        <div className="p-8 text-center border rounded-lg">
+          <h3 className="font-medium mb-2">No posts to show</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            {isOffline 
+              ? "You don't have any content stored locally."
+              : "Your feed is empty. Follow users or create a post to get started."}
+          </p>
+        </div>
       )}
     </div>
   );
-};
-
-export default ContentFeed;
+}
