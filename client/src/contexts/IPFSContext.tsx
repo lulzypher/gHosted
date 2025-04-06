@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { IPFSHTTPClient } from 'ipfs-http-client';
-import { initIPFS, getIPFS, getIPFSStats, pinToIPFS, unpinFromIPFS } from '@/lib/ipfs';
+import { initIPFS, getIPFS, getIPFSStats, pinToIPFS, unpinFromIPFS, isUsingMockIPFS } from '@/lib/ipfs';
 import { IPFSStats, PinnedContent, PinType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from './UserContext';
@@ -16,6 +16,7 @@ interface IPFSContextProps {
   unpinContent: (pinnedId: number, contentCid: string) => Promise<void>;
   refreshPinnedContents: () => Promise<void>;
   isContentPinned: (contentCid: string, pinType?: PinType) => boolean;
+  usingMockImplementation: boolean;
 }
 
 const IPFSContext = createContext<IPFSContextProps | undefined>(undefined);
@@ -27,9 +28,15 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [stats, setStats] = useState<IPFSStats>({
     pinnedCount: 0,
     totalSize: 0,
-    allocatedSize: 1073741824 // Default 1GB
+    numPins: 0,
+    repoSize: 0,
+    numObjects: 0,
+    storageMax: 1073741824,
+    allocatedSize: 1073741824,
+    peersConnected: 0
   });
   const [pinnedContents, setPinnedContents] = useState<PinnedContent[]>([]);
+  const [usingMockImplementation, setUsingMockImplementation] = useState<boolean>(false);
   
   const { toast } = useToast();
   const { user, getCurrentDevice } = useUser();
@@ -43,26 +50,28 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('Attempting to initialize IPFS connection...');
         
-        // Verify if we have IPFS credentials in environment variables
-        const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
-        const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
-        
-        if (!projectId || !projectSecret) {
-          setIpfsError('Missing IPFS credentials. Please check your environment variables.');
-          console.error('Missing IPFS credentials. Please check environment variables.');
-          return;
-        }
-        
         const ipfsInstance = await initIPFS();
         setIpfs(ipfsInstance);
         setIsIPFSReady(true);
         setIpfsError(null);
         
+        // Check if we're using the mock implementation
+        const usingMock = isUsingMockIPFS();
+        setUsingMockImplementation(usingMock);
+        
+        if (usingMock) {
+          toast({
+            title: "Using Local Storage",
+            description: "Connected to local storage for content. Infura IPFS service is not available.",
+            duration: 5000,
+          });
+        }
+        
         // Get initial stats
         const initialStats = await getIPFSStats();
         setStats(initialStats);
         
-        console.log('IPFS initialized successfully!');
+        console.log('IPFS initialized successfully!', usingMock ? '(using mock implementation)' : '');
       } catch (error) {
         retry += 1;
         let errorMessage = 'Failed to initialize IPFS.';
@@ -75,15 +84,41 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         setIpfsError(errorMessage);
-        setIsIPFSReady(false);
         
-        // Don't show toast on every retry attempt
+        // Try again with a mock implementation
         if (retry >= maxRetries) {
-          toast({
-            variant: "destructive",
-            title: "IPFS Connection Failed",
-            description: "Could not connect to IPFS. Limited functionality available.",
-          });
+          try {
+            console.log('Falling back to mock IPFS implementation...');
+            // Forces mock implementation on next attempt
+            localStorage.setItem('use-mock-ipfs', 'true');
+            
+            const ipfsInstance = await initIPFS();
+            setIpfs(ipfsInstance);
+            setIsIPFSReady(true);
+            setIpfsError(null);
+            setUsingMockImplementation(true);
+            
+            // Get initial stats
+            const initialStats = await getIPFSStats();
+            setStats(initialStats);
+            
+            toast({
+              title: "Using Local Storage",
+              description: "Connected to local storage for content. Infura IPFS service is not available.",
+              duration: 5000,
+            });
+            
+            console.log('Mock IPFS initialized successfully!');
+          } catch (mockError) {
+            console.error('Failed to initialize mock IPFS:', mockError);
+            setIsIPFSReady(false);
+            
+            toast({
+              variant: "destructive",
+              title: "IPFS Connection Failed",
+              description: "Could not connect to storage. Limited functionality available.",
+            });
+          }
         } else {
           console.log(`Retrying IPFS connection (${retry}/${maxRetries}) in 5 seconds...`);
           setTimeout(init, 5000);
@@ -232,7 +267,8 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pinContent,
       unpinContent,
       refreshPinnedContents,
-      isContentPinned
+      isContentPinned,
+      usingMockImplementation
     }}>
       {children}
     </IPFSContext.Provider>

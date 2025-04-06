@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Wifi, WifiOff, Link2, AlertCircle, Check, Activity, 
-  Loader, DatabaseIcon, ServerCrash, RefreshCw, Globe, PenTool 
+  Loader, DatabaseIcon, ServerCrash, RefreshCw, Globe, PenTool,
+  HardDrive
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +24,7 @@ interface DiagnosticResult {
 
 const NetworkDiagnosticTool: React.FC = () => {
   const { isConnected: wsConnected, reconnect: reconnectWs } = useWebSocket();
-  const { isIPFSReady, ipfsError, stats } = useIPFS();
+  const { isIPFSReady, ipfsError, stats, usingMockImplementation } = useIPFS();
   const { localPeers, connectionStatus, isDiscovering, startDiscovery } = usePeerDiscovery();
   
   const [isRunning, setIsRunning] = useState(false);
@@ -92,24 +93,37 @@ const NetworkDiagnosticTool: React.FC = () => {
       {
         name: 'IPFS Connection',
         test: async () => {
-          // Check IPFS connectivity
+          // Check IPFS connectivity and whether we're using the mock implementation
           const result: DiagnosticResult = {
             name: 'IPFS Connection',
             status: isIPFSReady ? 'success' : ipfsError ? 'error' : 'warning',
             message: isIPFSReady 
-              ? 'Connected to IPFS network' 
+              ? usingMockImplementation
+                ? 'Connected to local storage (mock IPFS implementation)'
+                : 'Connected to IPFS network'
               : ipfsError 
                 ? 'Failed to connect to IPFS: ' + ipfsError 
                 : 'IPFS connection is intermittent',
             icon: isIPFSReady 
-              ? <DatabaseIcon className="h-5 w-5 text-green-500" /> 
+              ? usingMockImplementation
+                ? <HardDrive className="h-5 w-5 text-green-500" />
+                : <DatabaseIcon className="h-5 w-5 text-green-500" /> 
               : ipfsError 
                 ? <ServerCrash className="h-5 w-5 text-red-500" /> 
                 : <DatabaseIcon className="h-5 w-5 text-amber-500" />
           };
           
-          if (result.status === 'warning') warningCount++;
-          if (result.status === 'error') errorCount++;
+          // If we're using a mock implementation, it's not a full error 
+          // but we should warn the user that they're not connected to a real network
+          if (isIPFSReady && usingMockImplementation) {
+            warningCount++;
+            result.status = 'warning';
+          } else if (result.status === 'warning') {
+            warningCount++;
+          } else if (result.status === 'error') {
+            errorCount++;
+          }
+          
           return result;
         },
         weight: 25
@@ -170,13 +184,20 @@ const NetworkDiagnosticTool: React.FC = () => {
           if (isIPFSReady) {
             if (hasPins && hasStorage) {
               status = 'success';
-              message = `${stats.numPins} item(s) pinned, ${(stats.totalSize! / (1024 * 1024)).toFixed(2)} MB stored locally.`;
+              message = `${stats.numPins} item(s) pinned, ${(stats.totalSize! / (1024 * 1024)).toFixed(2)} MB stored ${usingMockImplementation ? 'in browser' : 'on IPFS node'}.`;
             } else if (hasPins) {
               status = 'success';
-              message = `${stats.numPins} item(s) pinned, but no significant local storage used.`;
+              message = `${stats.numPins} item(s) pinned ${usingMockImplementation ? 'in browser' : 'on IPFS node'}.`;
             } else {
               status = 'warning';
               message = 'No content is pinned locally yet. Content may not be available offline.';
+              warningCount++;
+            }
+            
+            // Add mock implementation note if needed
+            if (usingMockImplementation && status === 'success') {
+              message += ' (Using browser storage - content not shared with IPFS network)';
+              status = 'warning';
               warningCount++;
             }
           } else {

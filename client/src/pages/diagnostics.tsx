@@ -1,19 +1,22 @@
 import React from 'react';
 import { Link } from 'wouter';
-import { Wifi, Info, ArrowLeft, Settings } from 'lucide-react';
+import { Wifi, Info, ArrowLeft, Settings, HardDrive, AlertTriangle } from 'lucide-react';
 import NetworkDiagnosticTool from '@/components/NetworkDiagnosticTool';
 import WebSocketStatus from '@/components/WebSocketStatus';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useUser } from '@/contexts/UserContext';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { usePeerDiscovery } from '@/contexts/PeerDiscoveryContext';
+import { useIPFS } from '@/contexts/IPFSContext';
 
 const DiagnosticsPage: React.FC = () => {
   const { user } = useUser();
   const { isConnected: wsConnected, lastActivity } = useWebSocket();
   const { localPeers, connectionStatus } = usePeerDiscovery();
+  const { usingMockImplementation, isIPFSReady } = useIPFS();
   
   // Calculate connected peers
   const connectedPeers = localPeers.filter(peer => peer.status === 'connected').length;
@@ -48,6 +51,18 @@ const DiagnosticsPage: React.FC = () => {
           </Link>
           <h1 className="text-2xl font-bold">Network Diagnostics</h1>
         </div>
+        
+        {usingMockImplementation && isIPFSReady && (
+          <Alert variant="warning" className="mb-6">
+            <HardDrive className="h-4 w-4" />
+            <AlertTitle>Using Local Storage Mode</AlertTitle>
+            <AlertDescription>
+              The app is currently using browser storage instead of IPFS network. 
+              Your content is stored locally and will not be shared with the IPFS network.
+              This is a fallback mode for browsers without IPFS node access.
+            </AlertDescription>
+          </Alert>
+        )}
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2">

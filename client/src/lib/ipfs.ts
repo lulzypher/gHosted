@@ -1,15 +1,17 @@
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
 import { CID } from 'multiformats/cid';
 import { IPFSStats } from '@/types';
+import { createMockIPFSClient, MockIPFSClient } from './mockIPFS';
 
 // Configure IPFS connection
 let ipfs: IPFSHTTPClient | undefined;
 let isConnecting = false;
 let lastConnectionAttempt = 0;
+let usingMockIPFS = false;
 const RETRY_INTERVAL = 15000; // 15 seconds between retry attempts
 const CONNECTION_TIMEOUT = 15000; // 15 seconds timeout
 
-// Initialize IPFS with the local node or Infura gateway
+// Initialize IPFS with the local node or Infura gateway, falling back to mock implementation
 export const initIPFS = async (): Promise<IPFSHTTPClient> => {
   try {
     // Prevent multiple simultaneous connection attempts and rate limit retries
@@ -27,48 +29,71 @@ export const initIPFS = async (): Promise<IPFSHTTPClient> => {
     isConnecting = true;
     lastConnectionAttempt = now;
     
-    console.log('Attempting to connect to IPFS...');
-    
-    // For browser compatibility and to avoid CORS issues, let's use Infura directly
-    const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
-    const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
-    
-    if (!projectId || !projectSecret) {
-      console.error('Missing IPFS project credentials');
+    // Check if we've previously decided to use mock IPFS
+    if (localStorage.getItem('use-mock-ipfs') === 'true') {
+      console.log('Using mock IPFS implementation from localStorage preference');
+      ipfs = createMockIPFSClient() as unknown as IPFSHTTPClient;
+      usingMockIPFS = true;
       isConnecting = false;
-      throw new Error('Missing IPFS project credentials. Please set the environment variables.');
+      return ipfs;
     }
     
-    // Log that we have credentials (without revealing them)
-    console.log('IPFS project credentials found');
+    console.log('Attempting to connect to IPFS...');
     
-    // Use browser's btoa instead of Buffer.from for base64 encoding
-    const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
-    
-    console.log('Creating IPFS client with Infura gateway');
-    ipfs = create({
-      host: 'ipfs.infura.io',
-      port: 5001,
-      protocol: 'https',
-      headers: {
-        authorization: auth
-      },
-      timeout: CONNECTION_TIMEOUT
-    });
-    
-    // Test the connection with a timeout
-    console.log('Testing IPFS connection...');
-    const testPromise = ipfs.version();
-    
-    // Add a timeout for the connection test
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('IPFS connection test timed out')), CONNECTION_TIMEOUT);
-    });
-    
-    const version = await Promise.race([testPromise, timeoutPromise]);
-    console.log('Connected to IPFS gateway. Version:', version);
-    isConnecting = false;
-    return ipfs;
+    try {
+      // For browser compatibility and to avoid CORS issues, let's use Infura directly
+      const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
+      const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
+      
+      if (!projectId || !projectSecret) {
+        console.error('Missing IPFS project credentials, switching to mock implementation');
+        throw new Error('Missing IPFS project credentials');
+      }
+      
+      // Log that we have credentials (without revealing them)
+      console.log('IPFS project credentials found');
+      
+      // Use browser's btoa instead of Buffer.from for base64 encoding
+      const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
+      
+      console.log('Creating IPFS client with Infura gateway');
+      ipfs = create({
+        host: 'ipfs.infura.io',
+        port: 5001,
+        protocol: 'https',
+        headers: {
+          authorization: auth
+        },
+        timeout: CONNECTION_TIMEOUT
+      });
+      
+      // Test the connection with a timeout
+      console.log('Testing IPFS connection...');
+      const testPromise = ipfs.version();
+      
+      // Add a timeout for the connection test
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('IPFS connection test timed out')), CONNECTION_TIMEOUT);
+      });
+      
+      const version = await Promise.race([testPromise, timeoutPromise]);
+      console.log('Connected to IPFS gateway. Version:', version);
+      isConnecting = false;
+      usingMockIPFS = false;
+      return ipfs;
+    } catch (error) {
+      console.warn('Failed to connect to real IPFS, switching to mock implementation:', error);
+      
+      // Save preference to use mock IPFS to avoid repeated failed connection attempts
+      localStorage.setItem('use-mock-ipfs', 'true');
+      
+      // Create and return a mock IPFS client
+      console.log('Creating mock IPFS client as fallback');
+      ipfs = createMockIPFSClient() as unknown as IPFSHTTPClient;
+      usingMockIPFS = true;
+      isConnecting = false;
+      return ipfs;
+    }
   } catch (error) {
     isConnecting = false;
     let errorMessage = 'Unable to connect to IPFS';
@@ -81,8 +106,22 @@ export const initIPFS = async (): Promise<IPFSHTTPClient> => {
       console.error('Failed to connect to IPFS gateway with unknown error:', error);
     }
     
-    throw new Error(errorMessage);
+    // Try to use mock IPFS as last resort
+    try {
+      console.log('Creating mock IPFS client after connection error');
+      ipfs = createMockIPFSClient() as unknown as IPFSHTTPClient;
+      usingMockIPFS = true;
+      return ipfs;
+    } catch (mockError) {
+      console.error('Failed to create mock IPFS client:', mockError);
+      throw new Error(errorMessage);
+    }
   }
+};
+
+// Check if we're using the mock IPFS implementation
+export const isUsingMockIPFS = (): boolean => {
+  return usingMockIPFS;
 };
 
 // Get the IPFS instance, initializing if needed
