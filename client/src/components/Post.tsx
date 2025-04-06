@@ -54,7 +54,7 @@ export function Post({ post }: { post: PostType }) {
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center space-x-3">
             <Link href={`/profile/${post.authorId}`}>
-              <a className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-[#3a3b3c]">
+              <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-[#3a3b3c] cursor-pointer">
                 {post.authorAvatar ? (
                   <img
                     src={`https://ipfs.io/ipfs/${post.authorAvatar}`}
@@ -66,13 +66,13 @@ export function Post({ post }: { post: PostType }) {
                     {post.authorName.charAt(0)}
                   </div>
                 )}
-              </a>
+              </div>
             </Link>
             <div>
               <Link href={`/profile/${post.authorId}`}>
-                <a className="font-medium text-[#e4e6eb] hover:underline">
+                <div className="font-medium text-[#e4e6eb] hover:underline cursor-pointer">
                   {post.authorName}
-                </a>
+                </div>
               </Link>
               <div className="flex items-center text-xs text-[#b0b3b8]">
                 <span className="mr-1">@{post.authorUsername}</span>
