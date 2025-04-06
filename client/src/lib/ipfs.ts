@@ -1,7 +1,5 @@
-// Fix for process not defined in browser environment
-if (typeof window !== 'undefined' && typeof process === 'undefined') {
-  window.process = { env: {} } as any;
-}
+// Import Node.js polyfills for browser compatibility
+import './polyfills';
 
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
 import { CID } from 'multiformats/cid';
@@ -19,6 +17,15 @@ import {
   generatePairingCode,
   connectToPeer
 } from './directIpfs';
+import {
+  initLiteIPFS,
+  addToLiteIPFS,
+  getFromLiteIPFS,
+  pinToLiteIPFS,
+  unpinFromLiteIPFS,
+  getPinnedLiteContent,
+  getLiteIPFSStats
+} from './ipfsLite';
 
 // Configure IPFS connection
 let ipfs: IPFSHTTPClient | undefined;
@@ -136,36 +143,55 @@ export const initIPFS = async (): Promise<IPFSHTTPClient> => {
       } catch (infuraError) {
         console.warn('Failed to connect to Infura IPFS, trying direct IPFS again (lightweight mode):', infuraError);
         
-        // If we're on mobile and Infura fails, try a lightweight js-ipfs configuration
+        // If we're on mobile and Infura fails, try our lite IPFS implementation
         try {
-          ipfs = await initDirectIPFS() as unknown as IPFSHTTPClient;
-          console.log('Direct IPFS node initialized successfully (lightweight mode)');
+          console.log('Attempting to initialize lightweight IPFS implementation...');
+          ipfs = await initLiteIPFS() as unknown as IPFSHTTPClient;
+          console.log('Lightweight IPFS implementation initialized successfully');
           isConnecting = false;
           usingMockIPFS = false;
+          // We'll still consider this direct IPFS for the purpose of API compatibility
           usingDirectIPFS = true;
           
-          // Save preference to use direct IPFS
+          // Save preference to use lite IPFS
           if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem('use-direct-ipfs', 'true');
+            window.localStorage.setItem('use-lite-ipfs', 'true');
           }
           
           return ipfs;
-        } catch (directRetryError) {
-          console.warn('Failed to initialize direct IPFS in lightweight mode:', directRetryError);
+        } catch (liteError) {
+          console.warn('Failed to initialize lightweight IPFS implementation:', liteError);
           
-          // If everything fails, fall back to mock implementation
-          console.log('Creating mock IPFS client as final fallback');
-          ipfs = createMockIPFSClient() as unknown as IPFSHTTPClient;
-          usingMockIPFS = true;
-          usingDirectIPFS = false;
-          isConnecting = false;
-          
-          // Only save mock preference when both direct and Infura fail
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem('use-mock-ipfs', 'true');
+          // As a last resort, try the regular direct IPFS again with minimal options
+          try {
+            ipfs = await initDirectIPFS() as unknown as IPFSHTTPClient;
+            console.log('Direct IPFS node initialized successfully (minimal mode)');
+            isConnecting = false;
+            usingMockIPFS = false;
+            usingDirectIPFS = true;
+            
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('use-direct-ipfs', 'true');
+            }
+            
+            return ipfs;
+          } catch (directRetryError) {
+            console.warn('Failed to initialize direct IPFS in minimal mode:', directRetryError);
+            
+            // If everything fails, fall back to mock implementation
+            console.log('Creating mock IPFS client as final fallback');
+            ipfs = createMockIPFSClient() as unknown as IPFSHTTPClient;
+            usingMockIPFS = true;
+            usingDirectIPFS = false;
+            isConnecting = false;
+            
+            // Only save mock preference when both direct and Infura fail
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('use-mock-ipfs', 'true');
+            }
+            
+            return ipfs;
           }
-          
-          return ipfs;
         }
       }
     }
@@ -218,8 +244,17 @@ export const addToIPFS = async (content: string | Blob): Promise<string> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // Check localStorage preference for lightweight IPFS implementation
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                          window.localStorage && 
+                          window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      return addToLiteIPFS(ipfsInstance, content);
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       return addToDirectIPFS(ipfsInstance, content);
     }
     
@@ -247,15 +282,25 @@ export const getFromIPFS = async (cid: string): Promise<Uint8Array> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // Validate CID
-    try {
-      CID.parse(cid);
-    } catch (e) {
-      throw new Error('Invalid CID format');
+    // Validate CID (expect for lite implementation with special CID format)
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                           window.localStorage && 
+                           window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    if (!isUsingLiteIPFS || !cid.startsWith('lite-')) {
+      try {
+        CID.parse(cid);
+      } catch (e) {
+        throw new Error('Invalid CID format');
+      }
     }
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      return getFromLiteIPFS(ipfsInstance, cid);
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       return getFromDirectIPFS(ipfsInstance, cid);
     }
     
@@ -288,14 +333,29 @@ export const pinToIPFS = async (cid: string): Promise<void> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // Check if we're using lite implementation
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                           window.localStorage && 
+                           window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      await pinToLiteIPFS(ipfsInstance, cid);
+      return;
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       await pinToDirectIPFS(ipfsInstance, cid);
       return;
     }
     
     // Otherwise use the standard IPFS API
-    await ipfsInstance.pin.add(CID.parse(cid));
+    // Skip CID validation for lite CIDs
+    if (!cid.startsWith('lite-')) {
+      await ipfsInstance.pin.add(CID.parse(cid));
+    } else {
+      console.warn('Cannot pin lite CID with standard IPFS implementation:', cid);
+    }
   } catch (error) {
     console.error(`Error pinning content to IPFS (CID: ${cid}):`, error);
     throw error;
@@ -307,14 +367,29 @@ export const unpinFromIPFS = async (cid: string): Promise<void> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // Check if we're using lite implementation
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                           window.localStorage && 
+                           window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      await unpinFromLiteIPFS(ipfsInstance, cid);
+      return;
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       await unpinFromDirectIPFS(ipfsInstance, cid);
       return;
     }
     
     // Otherwise use the standard IPFS API
-    await ipfsInstance.pin.rm(CID.parse(cid));
+    // Skip CID validation for lite CIDs
+    if (!cid.startsWith('lite-')) {
+      await ipfsInstance.pin.rm(CID.parse(cid));
+    } else {
+      console.warn('Cannot unpin lite CID with standard IPFS implementation:', cid);
+    }
   } catch (error) {
     console.error(`Error unpinning content from IPFS (CID: ${cid}):`, error);
     throw error;
@@ -326,8 +401,17 @@ export const getPinnedContent = async (): Promise<string[]> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // Check if we're using lite implementation
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                           window.localStorage && 
+                           window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      return getPinnedLiteContent(ipfsInstance);
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       return getDirectPinnedContent(ipfsInstance);
     }
     
@@ -341,7 +425,8 @@ export const getPinnedContent = async (): Promise<string[]> => {
     return pins;
   } catch (error) {
     console.error('Error getting pinned content from IPFS:', error);
-    throw error;
+    // Return empty array instead of throwing on error
+    return [];
   }
 };
 
@@ -350,8 +435,17 @@ export const getIPFSStats = async (): Promise<IPFSStats> => {
   try {
     const ipfsInstance = await getIPFS();
     
-    // If using direct IPFS implementation, use it directly
-    if (usingDirectIPFS) {
+    // Check if we're using lite implementation
+    const isUsingLiteIPFS = typeof window !== 'undefined' && 
+                           window.localStorage && 
+                           window.localStorage.getItem('use-lite-ipfs') === 'true';
+    
+    // If using lightweight IPFS implementation
+    if (isUsingLiteIPFS) {
+      return getLiteIPFSStats(ipfsInstance);
+    }
+    // If using direct IPFS implementation
+    else if (usingDirectIPFS) {
       return getDirectIPFSStats(ipfsInstance);
     }
     

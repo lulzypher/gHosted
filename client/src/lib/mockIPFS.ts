@@ -3,10 +3,8 @@
  * This is a simplified version that uses browser storage (IndexedDB) when actual IPFS isn't available
  */
 
-// Fix for process not defined in browser environment
-if (typeof window !== 'undefined' && typeof process === 'undefined') {
-  window.process = { env: {} } as any;
-}
+// Import Node.js polyfills for browser compatibility
+import './polyfills';
 
 import { v4 as uuidv4 } from 'uuid';
 import { IPFSStats } from '@/types';

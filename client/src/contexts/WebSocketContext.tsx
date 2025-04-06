@@ -17,6 +17,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [lastActivity, setLastActivity] = useState<Date | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Function to establish WebSocket connection
   const connectWebSocket = () => {
@@ -50,32 +51,48 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // The app is functional without WebSockets thanks to our fallback mechanisms
     // So we'll make a best effort to connect, but won't worry too much if it fails
 
-    // Determine WebSocket URL based on current protocol
+    // Determine WebSocket URL based on current protocol and host
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     
     // Make sure we use the correct path that matches the server
-    const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}`;
+    // Add a unique connection ID to prevent connection conflicts
+    const connectionId = Math.random().toString(36).substring(2, 15);
+    const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}&connectionId=${connectionId}`;
     
     console.log('Attempting to connect to WebSocket at:', wsUrl);
     
-    // We'll try to connect directly without checking server health first
-    // This makes the application more resilient to temporary server issues
     try {
+      // Create the WebSocket connection directly
       ws.current = new WebSocket(wsUrl);
+      
+      // Log the WebSocket connection state
+      console.log('Initial WebSocket state:', ws.current.readyState);
+
+      // Clear any existing timeout
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
 
       // Set a timeout for the connection attempt
-      const connectionTimeout = setTimeout(() => {
+      connectionTimeoutRef.current = setTimeout(() => {
         if (ws.current && ws.current.readyState !== WebSocket.OPEN) {
           console.warn('WebSocket connection timeout');
-          ws.current.close();
+          try {
+            ws.current.close();
+          } catch (err) {
+            console.warn('Error closing WebSocket after timeout:', err);
+          }
           setIsConnected(false);
         }
       }, 10000);
 
       ws.current.onopen = () => {
-        console.log('WebSocket connected');
-        clearTimeout(connectionTimeout);
+        console.log('WebSocket connected successfully');
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = undefined;
+        }
         setIsConnected(true);
         
         // Clear any reconnect timeouts
@@ -87,7 +104,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       ws.current.onclose = (event) => {
         console.log('WebSocket disconnected', event);
-        clearTimeout(connectionTimeout);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = undefined;
+        }
         setIsConnected(false);
 
         // Log a clearer message about close reasons
@@ -114,7 +134,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.log(`WebSocket closed with code ${event.code}: ${reason}`);
         }
 
-        // Try to reconnect after 5 seconds, with exponential backoff
+        // Try to reconnect after a delay, with exponential backoff
         if (!reconnectTimeoutRef.current) {
           const backoffTime = Math.min(30000, 5000 * Math.pow(2, Math.floor(Math.random() * 3)));
           console.log(`Will attempt to reconnect in ${backoffTime/1000} seconds`);
@@ -163,6 +183,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 ws.current.send(JSON.stringify({ type: 'PONG' }));
               }
               break;
+            case 'CONNECTED':
+              // Connection confirmation from server
+              console.log('WebSocket connection confirmed by server:', data);
+              break;
             default:
               console.log('Unknown message type:', data.type);
           }
@@ -170,7 +194,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.error('Error processing WebSocket message:', error);
         }
       };
-      
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
       setIsConnected(false);
@@ -179,15 +202,24 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Connect when component mounts and user is available
   useEffect(() => {
-    connectWebSocket();
+    if (user) {
+      connectWebSocket();
+    }
 
     // Cleanup on unmount
     return () => {
       if (ws.current) {
-        ws.current.close();
+        try {
+          ws.current.close();
+        } catch (err) {
+          console.warn('Error closing WebSocket during cleanup:', err);
+        }
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
       }
     };
   }, [user?.id]);
@@ -199,7 +231,11 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Send a ping every 30 seconds to keep the connection alive
     const pingInterval = setInterval(() => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'PING' }));
+        try {
+          ws.current.send(JSON.stringify({ type: 'PING' }));
+        } catch (error) {
+          console.error('Error sending ping:', error);
+        }
       }
     }, 30000);
     
@@ -237,6 +273,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = undefined;
+    }
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = undefined;
     }
     connectWebSocket();
   };

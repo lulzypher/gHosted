@@ -13,6 +13,11 @@ import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { setupPeerServer, getPeersOnSameNetwork, connectedPeers } from "./peerServer";
 
+// Helper utility for generating random IDs
+function randomId(): string {
+  return Math.random().toString(36).substring(2, 15);
+}
+
 // WebSocket connections by user
 const wsConnections = new Map<number, Set<WebSocket>>();
 
@@ -32,6 +37,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     perMessageDeflate: false,
     // Allow 5 minutes for connection timeout
     maxPayload: 50 * 1024 * 1024, // 50MB max payload
+    // Set generous timeouts to avoid premature termination
+    verifyClient: (info, cb) => {
+      // Always accept connections, but log them
+      console.log("WebSocket connection verification from:", info.req.headers['x-forwarded-for'] || info.req.socket.remoteAddress);
+      cb(true);
+    }
   });
   
   console.log("WebSocket server created and listening on path /api/ws");
@@ -81,17 +92,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("WebSocket connection error:", error);
     });
     
-    // Extract user ID from the request
+    // Extract user ID and connection ID from the request
     const params = new URLSearchParams(req.url?.split("?")[1] || "");
     const userId = parseInt(params.get("userId") || "0");
+    const connectionId = params.get("connectionId") || randomId();
     
-    console.log("WebSocket connection for user:", userId);
+    // Get client IP for debugging
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    console.log(`WebSocket connection for user ${userId} from IP ${clientIp} with connectionId ${connectionId}`);
+    
+    // Add custom property for connection tracking
+    // @ts-ignore - add connection ID to the WebSocket object for tracking
+    ws.connectionId = connectionId;
     
     // Send an immediate welcome message to confirm connection
     try {
       ws.send(JSON.stringify({
         type: "CONNECTED",
         message: "Connected to websocket server",
+        userId: userId,
+        connectionId: connectionId,
         timestamp: new Date().toISOString()
       }));
     } catch (error) {
@@ -104,9 +124,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     wsConnections.get(userId)?.add(ws);
     
+    // Handle messages from client
+    ws.on("message", (message: string) => {
+      try {
+        const data = JSON.parse(message.toString());
+        console.log(`Received message from user ${userId}, connectionId ${connectionId}:`, data);
+        
+        // Handle different message types
+        if (data.type === "PONG") {
+          // Mark as alive in response to server ping
+          // @ts-ignore
+          ws.isAlive = true;
+        }
+      } catch (error) {
+        console.error("Error processing incoming message:", error);
+      }
+    });
+    
     // Handle connection close
     ws.on("close", () => {
-      console.log("WebSocket closed for user:", userId);
+      console.log(`WebSocket closed for user ${userId}, connectionId ${connectionId}`);
       wsConnections.get(userId)?.delete(ws);
       if (wsConnections.get(userId)?.size === 0) {
         wsConnections.delete(userId);
