@@ -156,14 +156,14 @@ export async function addLocalPost(post: Omit<PostType, 'id' | 'cid' | 'createdA
 }
 
 // Get all posts, including local unsynced ones
-export async function getAllPosts(includeDeleted: boolean = false): Promise<PostType[]> {
+export async function getAllPosts(): Promise<PostType[]> {
   const database = await initializeLocalStore();
   
   const posts = await database.getAll('posts');
   
-  // Filter posts based on the includeDeleted parameter
+  // Filter out deleted posts
   return posts
-    .filter(post => includeDeleted || !post.deleted)
+    .filter(post => !post.deleted)
     .sort((a, b) => {
       const dateA = new Date(b.localCreatedAt || b.createdAt);
       const dateB = new Date(a.localCreatedAt || a.createdAt);
@@ -445,78 +445,6 @@ class LocalStore {
       return false;
     }
   }
-}
-
-// Save media content locally and return a local URL
-export async function saveMediaContent(blob: Blob): Promise<{ cid: string, localUrl: string }> {
-  const database = await initializeLocalStore();
-  
-  // Generate a local ID for the media
-  const localId = uuidv4();
-  const tempCid = `local-media-${localId}`;
-  
-  // Convert blob to base64 for storage
-  const base64 = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.readAsDataURL(blob);
-  });
-  
-  // Create a store for media if it doesn't exist
-  if (!database.objectStoreNames.contains('media')) {
-    // Close the database and upgrade it
-    database.close();
-    const upgradedDb = await openDB<GhostDBSchema & { 
-      media: { 
-        key: string; 
-        value: { 
-          cid: string; 
-          data: string; 
-          mimeType: string; 
-          size: number;
-          created: number;
-          synced: boolean;
-        }; 
-      } 
-    }>('ghosted-local', database.version + 1, {
-      upgrade(db) {
-        // Create media store
-        db.createObjectStore('media', { keyPath: 'cid' });
-      }
-    });
-    
-    // Store the media
-    await upgradedDb.put('media', {
-      cid: tempCid,
-      data: base64,
-      mimeType: blob.type,
-      size: blob.size,
-      created: Date.now(),
-      synced: false
-    });
-    
-    // Return the new db
-    return {
-      cid: tempCid,
-      localUrl: base64
-    };
-  }
-  
-  // If the store exists, use it directly
-  const mediaStore = database.transaction('media', 'readwrite').objectStore('media');
-  await mediaStore.put({
-    cid: tempCid,
-    data: base64,
-    mimeType: blob.type,
-    size: blob.size,
-    created: Date.now(),
-    synced: false
-  });
-  
-  return {
-    cid: tempCid,
-    localUrl: base64
-  };
 }
 
 // Export a singleton instance
