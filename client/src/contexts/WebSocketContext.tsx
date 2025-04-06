@@ -20,6 +20,12 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Function to establish WebSocket connection
   const connectWebSocket = () => {
+    // First check if WebSockets are supported at all
+    if (typeof WebSocket === 'undefined') {
+      console.error('WebSockets are not supported in this browser');
+      return;
+    }
+
     // Don't connect if user is not logged in
     if (!user) {
       setIsConnected(false);
@@ -33,91 +39,155 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Close any existing connection
     if (ws.current) {
-      ws.current.close();
+      try {
+        ws.current.close();
+      } catch (err) {
+        console.warn('Error closing existing WebSocket:', err);
+      }
     }
 
-    // Determine WebSocket URL based on current protocol (check if window is defined for SSR compatibility)
-    const protocol = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss:' : 'ws:';
-    const host = (typeof window !== 'undefined') ? window.location.host : 'localhost:5000';
-    const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}`;
-
-    // Create new WebSocket connection
-    try {
-      ws.current = new WebSocket(wsUrl);
-
-      ws.current.onopen = () => {
-        console.log('WebSocket connected');
-        setIsConnected(true);
-        // Clear any reconnect timeouts
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = undefined;
+    // Check server health before attempting WebSocket connection
+    fetch('/api/healthcheck')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Server health check failed');
         }
-      };
+        return response.json();
+      })
+      .then(healthData => {
+        // Determine WebSocket URL based on current protocol
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}`;
+        
+        console.log('Attempting to connect to WebSocket at:', wsUrl);
 
-      ws.current.onclose = (event) => {
-        console.log('WebSocket disconnected', event);
-        setIsConnected(false);
-
-        // Try to reconnect after 5 seconds
-        if (!reconnectTimeoutRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectTimeoutRef.current = undefined;
-            connectWebSocket();
-          }, 5000);
-        }
-      };
-
-      ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Connection Error',
-          description: 'WebSocket connection failed. Some real-time updates may not work.'
-        });
-      };
-
-      ws.current.onmessage = (event) => {
+        // Create new WebSocket connection
         try {
-          const data = JSON.parse(event.data as string);
-          console.log('WebSocket message received:', data);
-          
-          // Update last activity time whenever we receive any message
-          setLastActivity(new Date());
+          ws.current = new WebSocket(wsUrl);
 
-          // Process messages based on type
-          switch (data.type) {
-            case 'NEW_POST':
-              // Handle new post notification
-              toast({
-                title: "New Post",
-                description: "Someone just shared a new post",
-              });
-              break;
-            case 'CONTENT_PINNED':
-              // Handle new pin notification
-              toast({
-                title: "Content Pinned",
-                description: "Content has been pinned to IPFS",
-              });
-              break;
-            case 'PING':
-              // Server ping to keep connection alive, send pong
-              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: 'PONG' }));
+          // Set a timeout for the connection attempt
+          const connectionTimeout = setTimeout(() => {
+            if (ws.current && ws.current.readyState !== WebSocket.OPEN) {
+              console.warn('WebSocket connection timeout');
+              ws.current.close();
+              setIsConnected(false);
+            }
+          }, 10000);
+
+          ws.current.onopen = () => {
+            console.log('WebSocket connected');
+            clearTimeout(connectionTimeout);
+            setIsConnected(true);
+            
+            // Clear any reconnect timeouts
+            if (reconnectTimeoutRef.current) {
+              clearTimeout(reconnectTimeoutRef.current);
+              reconnectTimeoutRef.current = undefined;
+            }
+          };
+
+          ws.current.onclose = (event) => {
+            console.log('WebSocket disconnected', event);
+            clearTimeout(connectionTimeout);
+            setIsConnected(false);
+
+            // Log a clearer message about close reasons
+            if (event.code) {
+              let reason = 'Unknown reason';
+              switch (event.code) {
+                case 1000: reason = 'Normal closure'; break;
+                case 1001: reason = 'Going away'; break;
+                case 1002: reason = 'Protocol error'; break;
+                case 1003: reason = 'Unsupported data'; break;
+                case 1005: reason = 'No status received'; break;
+                case 1006: reason = 'Abnormal closure'; break;
+                case 1007: reason = 'Invalid frame payload data'; break;
+                case 1008: reason = 'Policy violation'; break;
+                case 1009: reason = 'Message too big'; break;
+                case 1010: reason = 'Missing extension'; break;
+                case 1011: reason = 'Internal error'; break;
+                case 1012: reason = 'Service restart'; break;
+                case 1013: reason = 'Try again later'; break;
+                case 1014: reason = 'Bad gateway'; break;
+                case 1015: reason = 'TLS handshake'; break;
+                default: reason = `Code ${event.code}`; 
               }
-              break;
-            default:
-              console.log('Unknown message type:', data.type);
-          }
+              console.log(`WebSocket closed with code ${event.code}: ${reason}`);
+            }
+
+            // Try to reconnect after 5 seconds, with exponential backoff
+            if (!reconnectTimeoutRef.current) {
+              const backoffTime = Math.min(30000, 5000 * Math.pow(2, Math.floor(Math.random() * 3)));
+              console.log(`Will attempt to reconnect in ${backoffTime/1000} seconds`);
+              
+              reconnectTimeoutRef.current = setTimeout(() => {
+                reconnectTimeoutRef.current = undefined;
+                connectWebSocket();
+              }, backoffTime);
+            }
+          };
+
+          ws.current.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            // Don't show toast for every connection error as it can be annoying
+            // Only show for unexpected errors
+            if (navigator.onLine) {
+              toast({
+                variant: 'destructive',
+                title: 'Connection Error',
+                description: 'WebSocket connection failed. Some real-time updates may not work.'
+              });
+            }
+          };
+          
+          ws.current.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data as string);
+              console.log('WebSocket message received:', data);
+              
+              // Update last activity time whenever we receive any message
+              setLastActivity(new Date());
+
+              // Process messages based on type
+              switch (data.type) {
+                case 'NEW_POST':
+                  // Handle new post notification
+                  toast({
+                    title: "New Post",
+                    description: "Someone just shared a new post",
+                  });
+                  break;
+                case 'CONTENT_PINNED':
+                  // Handle new pin notification
+                  toast({
+                    title: "Content Pinned",
+                    description: "Content has been pinned to IPFS",
+                  });
+                  break;
+                case 'PING':
+                  // Server ping to keep connection alive, send pong
+                  if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                    ws.current.send(JSON.stringify({ type: 'PONG' }));
+                  }
+                  break;
+                default:
+                  console.log('Unknown message type:', data.type);
+              }
+            } catch (error) {
+              console.error('Error processing WebSocket message:', error);
+            }
+          };
+          
         } catch (error) {
-          console.error('Error processing WebSocket message:', error);
+          console.error('Error creating WebSocket connection:', error);
+          setIsConnected(false);
         }
-      };
-    } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
-      setIsConnected(false);
-    }
+      })
+      .catch(err => {
+        console.error('Server health check failed before WebSocket connection:', err);
+        setIsConnected(false);
+      });
   };
 
   // Connect when component mounts and user is available

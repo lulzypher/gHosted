@@ -1,20 +1,27 @@
-import OrbitDB from 'orbit-db';
+// Import our browser-compatible mock OrbitDB instead of the Node.js version
+import MockOrbitDB from './mockOrbitDB';
 import { getIPFS } from './ipfs';
 import { Post, User, PinnedContent } from '@/types';
 
-let orbitdb: OrbitDB;
+// Use mock OrbitDB in browser environments
+const OrbitDB = MockOrbitDB;
+
+let orbitdb: any; // Using 'any' to avoid type issues
 let postsDB: any;
 let usersDB: any;
 let profilesDB: any;
 let pinnedContentsDB: any;
 
 // Initialize OrbitDB
-export const initOrbitDB = async (did: string): Promise<OrbitDB> => {
+export const initOrbitDB = async (did: string): Promise<any> => {
   try {
     const ipfs = await getIPFS();
-    // Use IndexedDB by default in browsers
+    // Use IndexedDB by default in browsers with a browser-compatible directory
+    const directory = `ghosted-${did.replace(/[^a-zA-Z0-9]/g, '')}`;
+    console.log('Initializing OrbitDB with directory:', directory);
+    
     orbitdb = await OrbitDB.createInstance(ipfs, {
-      directory: did // Just use DID as the directory name (no path prefix)
+      directory: directory
     });
     
     return orbitdb;
@@ -25,7 +32,7 @@ export const initOrbitDB = async (did: string): Promise<OrbitDB> => {
 };
 
 // Get OrbitDB instance, initializing if needed
-export const getOrbitDB = async (did: string): Promise<OrbitDB> => {
+export const getOrbitDB = async (did: string): Promise<any> => {
   if (!orbitdb) {
     return initOrbitDB(did);
   }

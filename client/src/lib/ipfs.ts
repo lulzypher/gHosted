@@ -8,40 +8,33 @@ let ipfs: IPFSHTTPClient | undefined;
 // Initialize IPFS with the local node or Infura gateway
 export const initIPFS = async (): Promise<IPFSHTTPClient> => {
   try {
-    // Try to connect to a local IPFS node first
-    ipfs = create({ url: 'http://localhost:5001/api/v0' });
+    console.log('Attempting to connect to IPFS...');
+    
+    // For browser compatibility and to avoid CORS issues, let's use Infura directly
+    const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID || 'anonymous';  // Default to anonymous access
+    const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET || 'anonymous';
+    
+    // Use browser's btoa instead of Buffer.from for base64 encoding
+    const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
+    
+    console.log('Creating IPFS client with Infura gateway');
+    ipfs = create({
+      host: 'ipfs.infura.io',
+      port: 5001,
+      protocol: 'https',
+      headers: {
+        authorization: auth
+      }
+    });
     
     // Test the connection
-    await ipfs.version();
-    console.log('Connected to local IPFS node');
+    console.log('Testing IPFS connection...');
+    const version = await ipfs.version();
+    console.log('Connected to IPFS gateway. Version:', version);
     return ipfs;
-  } catch (localErr) {
-    console.warn('Failed to connect to local IPFS node, falling back to Infura gateway:', localErr);
-    
-    try {
-      // Fallback to Infura IPFS gateway
-      const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID || '';
-      const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET || '';
-      
-      // Use browser's btoa instead of Buffer.from for base64 encoding
-      const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
-      
-      ipfs = create({
-        host: 'ipfs.infura.io',
-        port: 5001,
-        protocol: 'https',
-        headers: {
-          authorization: auth
-        }
-      });
-      
-      await ipfs.version();
-      console.log('Connected to Infura IPFS gateway');
-      return ipfs;
-    } catch (infuraErr) {
-      console.error('Failed to connect to Infura IPFS gateway:', infuraErr);
-      throw new Error('Unable to connect to any IPFS node');
-    }
+  } catch (error) {
+    console.error('Failed to connect to IPFS gateway:', error);
+    throw new Error('Unable to connect to IPFS: ' + (error instanceof Error ? error.message : String(error)));
   }
 };
 

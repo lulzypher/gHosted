@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useUser } from '@/contexts/UserContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Ghost, Loader } from 'lucide-react';
+import { Ghost, Loader, AlertCircle, CheckCircle, WifiOff } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -19,6 +20,27 @@ type LoginFormData = z.infer<typeof loginSchema>;
 const Login: React.FC = () => {
   const { login, isLoading, error } = useUser();
   const [, navigate] = useLocation();
+  const [serverStatus, setServerStatus] = useState<boolean | null>(null);
+
+  // Check server status on component mount
+  useEffect(() => {
+    const checkServerStatus = async () => {
+      try {
+        const response = await fetch('/api/healthcheck');
+        setServerStatus(response.ok);
+      } catch (error) {
+        console.error('Server health check failed:', error);
+        setServerStatus(false);
+      }
+    };
+    
+    checkServerStatus();
+    
+    // Check periodically
+    const intervalId = setInterval(checkServerStatus, 10000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -29,8 +51,13 @@ const Login: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    await login(data.username, data.password);
-    navigate('/');
+    try {
+      await login(data.username, data.password);
+      navigate('/');
+    } catch (err) {
+      // Error is handled by the UserContext
+      console.error('Login submission error:', err);
+    }
   };
 
   return (
@@ -44,6 +71,15 @@ const Login: React.FC = () => {
           <h1 className="text-xl font-bold mt-4">Sign In</h1>
           <p className="text-gray-500 text-sm mt-1">Welcome to your decentralized social network</p>
         </div>
+        
+        {serverStatus === false && (
+          <Alert variant="destructive" className="mb-4">
+            <WifiOff className="h-4 w-4 mr-2" />
+            <AlertDescription>
+              We're having trouble connecting to the server. Some features may be limited.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {error && (
           <div className="bg-red-50 text-red-600 rounded-lg p-3 mb-4 text-sm">
@@ -93,7 +129,7 @@ const Login: React.FC = () => {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={isLoading}
+              disabled={isLoading || serverStatus === false}
             >
               {isLoading ? (
                 <Loader className="h-4 w-4 mr-2 animate-spin" />
@@ -102,6 +138,27 @@ const Login: React.FC = () => {
             </Button>
           </form>
         </Form>
+
+        {/* Service Status Indicator */}
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <h3 className="text-sm font-medium mb-2">Service Status</h3>
+          <div className="space-y-1">
+            <div className="flex items-center text-sm">
+              {serverStatus === null ? (
+                <Loader className="h-3 w-3 mr-2 animate-spin text-gray-400" />
+              ) : serverStatus ? (
+                <CheckCircle className="h-3 w-3 mr-2 text-green-500" />
+              ) : (
+                <AlertCircle className="h-3 w-3 mr-2 text-red-500" />
+              )}
+              <span>Server: {serverStatus === null ? 'Checking...' : serverStatus ? 'Online' : 'Offline'}</span>
+            </div>
+            <div className="flex items-center text-sm text-gray-500">
+              <AlertCircle className="h-3 w-3 mr-2 text-yellow-500" />
+              <span>P2P Components: Limited Availability</span>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-6 pt-4 border-t border-gray-100 text-center text-sm">
           <p className="text-gray-600">
