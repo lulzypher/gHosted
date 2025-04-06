@@ -1,57 +1,91 @@
-import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import React from 'react';
+import { Header } from '@/components/Header';
+import { LeftSidebar } from '@/components/LeftSidebar';
+import { RightSidebar } from '@/components/RightSidebar';
+import { CreatePost } from '@/components/CreatePost';
+import { Post, PostType } from '@/components/Post';
+import { NetworkStatus, NetworkStatusEnum } from '@/components/NetworkStatus';
+import { WebSocketStatus } from '@/components/WebSocketStatus';
 
 export default function HomePage() {
-  const { user, logoutMutation } = useAuth();
-
-  const handleLogout = () => {
-    logoutMutation.mutate();
-  };
+  // This would come from an API in a real application
+  const mockPosts: PostType[] = [
+    {
+      id: 1,
+      authorId: 101,
+      authorName: 'Sarah Johnson',
+      authorUsername: 'sarahj',
+      authorAvatar: 'QmV5jMKALn3fqYzq9uLAYemY1gX7ScdEdVy4YF1PYYVUdf',
+      content: "Just finished setting up my personal gHosted node. It's incredible how this works without central servers! 🚀\n\nIf you're on my network, you should be able to see this post even if the internet goes down. #decentralized #p2p",
+      createdAt: '2025-04-06T14:32:00.000Z',
+      cid: 'QmcQsS8RDxQMstKNAoRZnHHEYXRfCmPnhTQ1rFKfJFdmvS',
+      likes: 23,
+      comments: 5,
+      reposts: 3,
+      isLiked: false,
+      isLoved: true
+    },
+    {
+      id: 2,
+      authorId: 102,
+      authorName: 'Alex Chen',
+      authorUsername: 'alexc',
+      authorAvatar: 'QmR8YrtoA5KN39zH4PyfJz2fxR1zDvtZvAKasXQVKrSuNF',
+      content: "I've been testing gHosted for a week now and I'm impressed with the resilience of the network. No central authority controlling what we say or share. True freedom!",
+      mediaCid: 'QmUsvWrCnX9t1GFk6kFyVJA2Fwzu4BgQWKK5nHn1vJ5wCq',
+      createdAt: '2025-04-06T12:15:00.000Z',
+      cid: 'QmVXjKmNNQ13S5JYW7LL9qcKubvvPwuvPQWKpzfpNZhHBZ',
+      likes: 14,
+      comments: 2,
+      reposts: 1,
+      isLiked: true
+    },
+    {
+      id: 3,
+      authorId: 103,
+      authorName: 'Taylor Miyamoto',
+      authorUsername: 'taylorm',
+      content: "Just paired my mobile phone with my desktop node. Now all my content is synced across devices without any cloud service! The future is decentralized. #gHosted #p2p",
+      createdAt: '2025-04-05T23:42:00.000Z',
+      cid: 'QmehR8Y4q2uPXeAeEEUFyDKMz8nmQHBGgDq2aPWvAG6Hum',
+      likes: 8,
+      comments: 1,
+      reposts: 0
+    }
+  ];
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col items-center justify-center min-h-[80vh]">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl">Welcome to gHosted!</CardTitle>
-            <CardDescription>
-              You are now logged in to the decentralized social platform
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="p-4 bg-primary/10 rounded-lg">
-                <h3 className="font-medium text-lg">Your Profile</h3>
-                <p><span className="font-medium">Username:</span> {user?.username}</p>
-                <p><span className="font-medium">Display Name:</span> {user?.displayName}</p>
-                {user?.bio && <p><span className="font-medium">Bio:</span> {user?.bio}</p>}
-              </div>
-              
-              <div className="p-4 bg-muted rounded-lg">
-                <h3 className="font-medium text-lg">Decentralized Identity</h3>
-                <p className="mb-1"><span className="font-medium">DID:</span></p>
-                <div className="p-2 bg-background rounded text-xs break-all">
-                  {user?.did}
-                </div>
-                <p className="mt-2 mb-1"><span className="font-medium">Public Key:</span></p>
-                <div className="p-2 bg-background rounded text-xs break-all">
-                  {user?.publicKey}
-                </div>
-              </div>
+    <div className="h-screen flex flex-col bg-muted/30 dark:bg-background">
+      <Header />
+      
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar */}
+        <LeftSidebar />
+        
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto py-4 px-4 md:px-6">
+          <div className="max-w-2xl mx-auto">
+            <div className="mb-4 flex justify-between items-center">
+              <h1 className="text-2xl font-semibold text-foreground">Home Feed</h1>
+              <WebSocketStatus />
             </div>
-          </CardContent>
-          <CardFooter>
-            <Button 
-              variant="outline" 
-              className="w-full" 
-              onClick={handleLogout}
-              disabled={logoutMutation.isPending}
-            >
-              {logoutMutation.isPending ? "Logging out..." : "Logout"}
-            </Button>
-          </CardFooter>
-        </Card>
+            
+            <NetworkStatus status={NetworkStatusEnum.CONNECTED} peerCount={5} />
+            
+            <div className="my-4">
+              <CreatePost />
+            </div>
+            
+            <div className="space-y-4">
+              {mockPosts.map((post) => (
+                <Post key={post.id} post={post} />
+              ))}
+            </div>
+          </div>
+        </main>
+        
+        {/* Right Sidebar */}
+        <RightSidebar />
       </div>
     </div>
   );

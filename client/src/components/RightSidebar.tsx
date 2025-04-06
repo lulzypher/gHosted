@@ -1,206 +1,179 @@
 import React from 'react';
-import { useIPFS } from '@/contexts/IPFSContext';
-import { usePeerConnections } from '@/hooks/use-peer-connection';
-import { User, HardDrive, Smartphone, FileText } from 'lucide-react';
-import { PinnedContent } from '@/types';
 import { Link } from 'wouter';
-import LocalPeers from './LocalPeers';
+import { Info, ChevronRight } from 'lucide-react';
 
-const RightSidebar: React.FC = () => {
-  const { pinnedContents } = useIPFS();
-  const { peerConnections, onlinePeers } = usePeerConnections();
+interface NetworkPeer {
+  id: string;
+  name: string;
+  avatar?: string;
+  isOnline: boolean;
+}
 
+interface PinnedContent {
+  id: number;
+  title: string;
+  imageCid?: string;
+  cid: string;
+  type: 'post' | 'media' | 'website';
+}
+
+export function RightSidebar() {
+  // These would come from a real API but for now are mocked for the UI
+  const activePeers: NetworkPeer[] = [
+    { id: '1', name: 'Sarah J.', isOnline: true, avatar: 'QmV5jMKALn3fqYzq9uLAYemY1gX7ScdEdVy4YF1PYYVUdf' },
+    { id: '2', name: 'Alex C.', isOnline: true, avatar: 'QmR8YrtoA5KN39zH4PyfJz2fxR1zDvtZvAKasXQVKrSuNF' },
+    { id: '3', name: 'Taylor M.', isOnline: true },
+    { id: '4', name: 'Jordan L.', isOnline: true, avatar: 'QmPEbNnJq9rkLt5pKQoaVKL2xFNbejebVhzLPmHD1EQJgS' },
+    { id: '5', name: 'Pat D.', isOnline: true, avatar: 'QmRNGxRk9ppi5nTQFyTYpHKDh1GBzUFNcUSfvN7KqeyLwy' },
+    { id: '6', name: 'Quinn R.', isOnline: false },
+    { id: '7', name: 'Robin S.', isOnline: false }
+  ];
+  
+  const onlinePeers = activePeers.filter(peer => peer.isOnline);
+  
+  const pinnedContents: PinnedContent[] = [
+    { 
+      id: 1, 
+      title: 'Network Infrastructure',
+      imageCid: 'QmUsvWrCnX9t1GFk6kFyVJA2Fwzu4BgQWKK5nHn1vJ5wCq',
+      cid: 'QmcVPnhKP1MwYbv8mVHYfUz9NuJuBhzwKtLNTbGaQzKJYe',
+      type: 'media'
+    },
+    {
+      id: 2,
+      title: 'IPFS Introduction',
+      cid: 'QmVXjKmNNQ13S5JYW7LL9qcKubvvPwuvPQWKpzfpNZhHBZ',
+      type: 'post'
+    },
+    {
+      id: 3,
+      title: 'Decentralized App Tutorial',
+      imageCid: 'QmZrcMQnMidvjtB3Ft6CuY6cHpb8YzTcZKxEWzZ6XJ9JVe',
+      cid: 'QmehR8Y4q2uPXeAeEEUFyDKMz8nmQHBGgDq2aPWvAG6Hum',
+      type: 'website'
+    }
+  ];
+  
   return (
-    <aside className="hidden lg:block w-80 space-y-4">
-      {/* Peers and Connections */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h3 className="font-semibold text-sm mb-3">Network</h3>
+    <div className="w-full max-w-[280px] h-[calc(100vh-3.5rem)] overflow-y-auto flex flex-col bg-background border-l border-border/20 dark:border-border/10 py-4">
+      <div className="px-4 mb-4">
+        <h2 className="text-foreground font-semibold text-lg mb-3">Network</h2>
         
-        {/* Connected Peers */}
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <h4 className="text-xs text-gray-500">Active Peers</h4>
-            <span className="text-xs font-medium bg-green-100 text-status-synced px-2 py-0.5 rounded-full">
-              {onlinePeers} Online
-            </span>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            {peerConnections
-              .filter(peer => peer.status === 'online')
-              .slice(0, 5)
-              .map(peer => (
-                <div key={peer.id} className="relative group">
-                  <div className="h-8 w-8 rounded-full overflow-hidden border-2 border-status-synced">
-                    {peer.user?.avatarCid ? (
-                      <img 
-                        src={`https://ipfs.io/ipfs/${peer.user.avatarCid}`}
-                        alt={peer.user?.displayName || 'Peer'} 
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center bg-gray-200 text-gray-600">
-                        <User className="h-4 w-4" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="hidden group-hover:block absolute bg-black text-white text-xs p-2 rounded whitespace-nowrap left-0 mt-1 z-50">
-                    {peer.user?.displayName || 'Unknown User'}
-                  </div>
+        <div className="bg-card dark:bg-card/90 rounded-lg p-3 space-y-3">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-medium text-foreground">Active Peers</h3>
+              <span className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
+                {onlinePeers.length} Online
+              </span>
+            </div>
+            
+            <div className="flex -space-x-2 overflow-hidden">
+              {onlinePeers.slice(0, 5).map((peer) => (
+                <div key={peer.id} className="h-8 w-8 rounded-full ring-2 ring-background overflow-hidden">
+                  {peer.avatar ? (
+                    <img
+                      src={`https://ipfs.io/ipfs/${peer.avatar}`}
+                      alt={peer.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                      {peer.name.charAt(0)}
+                    </div>
+                  )}
                 </div>
               ))}
-            
-            {onlinePeers > 5 && (
-              <div className="relative group">
-                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gray-200 text-gray-600 text-xs">
-                  +{onlinePeers - 5}
+              {onlinePeers.length > 5 && (
+                <div className="h-8 w-8 rounded-full ring-2 ring-background flex items-center justify-center bg-muted/70 dark:bg-muted/30 text-xs font-medium text-foreground">
+                  +{onlinePeers.length - 5}
                 </div>
-                <div className="hidden group-hover:block absolute bg-black text-white text-xs p-2 rounded whitespace-nowrap left-0 mt-1 z-50">
-                  {onlinePeers - 5} more peers
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        
-        {/* Network Stats */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Shared Files</span>
-            <span className="font-medium">{pinnedContents.length}</span>
+          
+          <div className="pt-2 border-t border-border/10">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm text-foreground">Shared Files</span>
+              <span className="text-sm font-medium text-foreground">142</span>
+            </div>
           </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Total Storage Used</span>
-            <span className="font-medium">
-              {(pinnedContents.reduce((acc, _) => acc + 1, 0) * 0.25).toFixed(1)} MB
-            </span>
+          
+          <div className="pt-2 border-t border-border/10">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm text-foreground">Total Storage Used</span>
+              <span className="text-sm font-medium text-foreground">1.2 GB</span>
+            </div>
           </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Network Health</span>
-            <span className="font-medium text-status-synced">Good</span>
+          
+          <div className="pt-2 border-t border-border/10">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-foreground">Network Health</span>
+              <span className="text-sm font-medium text-green-600 dark:text-green-400">Good</span>
+            </div>
           </div>
         </div>
       </div>
       
-      {/* Pinned Posts */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h3 className="font-semibold text-sm mb-3">Pinned Content</h3>
+      <div className="px-4">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-foreground font-semibold text-lg">Pinned Content</h2>
+          <Link href="/pinned">
+            <a className="text-xs text-primary hover:underline flex items-center">
+              View All
+              <ChevronRight className="h-3 w-3 ml-0.5" />
+            </a>
+          </Link>
+        </div>
         
-        {/* Pinned Post List */}
         <div className="space-y-3">
-          {pinnedContents.slice(0, 3).map((content: PinnedContent) => (
-            <div key={content.id} className="flex space-x-3 pb-3 border-b border-gray-100">
-              <div className="h-10 w-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                {content.post?.imageCid ? (
-                  <img 
-                    src={`https://ipfs.io/ipfs/${content.post.imageCid}`}
-                    alt="Post thumbnail" 
-                    className="h-full w-full object-cover"
-                  />
+          {pinnedContents.map((content) => (
+            <Link key={content.id} href={`/content/${content.cid}`}>
+              <a className="block bg-card dark:bg-card/90 hover:bg-muted/50 hover:dark:bg-muted/10 rounded-lg overflow-hidden transition-colors">
+                {content.imageCid ? (
+                  <div className="aspect-video w-full overflow-hidden relative">
+                    <img
+                      src={`https://ipfs.io/ipfs/${content.imageCid}`}
+                      alt={content.title}
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                      {content.type === 'media' ? 'Media' : content.type === 'website' ? 'Website' : 'Post'}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-gray-200">
-                    <FileText className="h-5 w-5 text-gray-400" />
+                  <div className="h-16 flex items-center p-3">
+                    <div className="w-10 h-10 rounded flex items-center justify-center bg-primary/10 text-primary mr-3">
+                      <Info className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-medium text-foreground truncate">{content.title}</h3>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {content.cid.substring(0, 8)}...
+                      </p>
+                    </div>
                   </div>
                 )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm line-clamp-2">
-                  {content.post?.content || 'Pinned content'}
-                </p>
-                <div className="flex items-center mt-1">
-                  <span className="text-xs text-gray-500">{content.post?.user?.displayName || 'Unknown User'}</span>
-                  <div className="w-1 h-1 rounded-full bg-gray-300 mx-1.5"></div>
-                  <div className="flex items-center text-xs text-accent">
-                    {content.pinType === 'like' ? (
-                      <>
-                        <HardDrive className="mr-0.5 h-3 w-3" />
-                        <span>PC</span>
-                      </>
-                    ) : (
-                      <>
-                        <HardDrive className="mr-0.5 h-3 w-3" />
-                        <Smartphone className="mr-0.5 h-3 w-3" />
-                        <span>All</span>
-                      </>
-                    )}
+                {content.imageCid && (
+                  <div className="p-2">
+                    <h3 className="text-sm font-medium text-foreground">{content.title}</h3>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {content.cid.substring(0, 10)}...
+                    </p>
                   </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          
-          {pinnedContents.length > 3 && (
-            <Link href="/storage">
-              <a className="w-full mt-2 block text-center text-xs text-primary font-medium py-1.5 hover:bg-blue-50 rounded-lg">
-                View All Pinned Content
+                )}
               </a>
             </Link>
-          )}
-
-          {pinnedContents.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-2">
-              No pinned content yet. Like or Love posts to pin them.
-            </p>
-          )}
+          ))}
         </div>
       </div>
       
-      {/* Local Peers - P2P Discovery */}
-      <LocalPeers />
-      
-      {/* Suggested Communities */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h3 className="font-semibold text-sm mb-3">Suggested Communities</h3>
-        
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                <i className="ri-code-line"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium">Web3 Developers</h4>
-                <p className="text-xs text-gray-500">3.2k members</p>
-              </div>
-            </div>
-            <button className="text-xs text-primary border border-primary px-2 py-1 rounded hover:bg-blue-50">
-              Join
-            </button>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center">
-                <i className="ri-earth-line"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium">Decentralized Social</h4>
-                <p className="text-xs text-gray-500">1.8k members</p>
-              </div>
-            </div>
-            <button className="text-xs text-primary border border-primary px-2 py-1 rounded hover:bg-blue-50">
-              Join
-            </button>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
-                <i className="ri-file-paper-2-line"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium">Content Creators</h4>
-                <p className="text-xs text-gray-500">5.1k members</p>
-              </div>
-            </div>
-            <button className="text-xs text-primary border border-primary px-2 py-1 rounded hover:bg-blue-50">
-              Join
-            </button>
-          </div>
+      <div className="mt-auto px-4">
+        <div className="text-xs text-center text-muted-foreground pt-4 border-t border-border/10 dark:border-border/5">
+          <p>All content is stored on IPFS</p>
+          <p className="mt-1">gHosted v0.1.0-alpha</p>
         </div>
       </div>
-    </aside>
+    </div>
   );
-};
-
-export default RightSidebar;
+}

@@ -1,141 +1,76 @@
-import React, { useState, useRef } from 'react';
-import { useUser } from '@/contexts/UserContext';
-import { usePosts } from '@/hooks/use-posts';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Loader, Image, File, SendIcon, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { Image, FileText, Send } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 
-const CreatePost: React.FC = () => {
-  const { user } = useUser();
-  const { createPost, isCreatingPost } = usePosts();
-  const [content, setContent] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!user) return null;
+export function CreatePost() {
+  const { user } = useAuth();
+  const [postText, setPostText] = useState('');
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!content.trim()) return;
-    
-    createPost({
-      content,
-      image: imageFile || undefined
-    });
-    
-    // Reset form
-    setContent('');
-    setImageFile(null);
+    // Handle post submission here - would connect to IPFS
+    console.log('Submitting post:', postText);
+    setPostText('');
   };
   
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setImageFile(e.target.files[0]);
-    }
-  };
-  
-  const triggerFileInput = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
   return (
-    <div className="bg-white rounded-xl shadow-sm p-4">
-      <form onSubmit={handleSubmit}>
-        <div className="flex space-x-3">
-          <div className="h-10 w-10 rounded-full overflow-hidden">
-            {user.avatarCid ? (
-              <img 
-                src={`https://ipfs.io/ipfs/${user.avatarCid}`}
-                alt={`${user.displayName}'s profile`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-gray-200 text-gray-600">
-                <User className="h-5 w-5" />
-              </div>
-            )}
-          </div>
-          <div className="flex-1">
-            <Input
-              type="text"
-              placeholder="What's on your mind?"
-              className="w-full px-4 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-1 focus:ring-primary"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              disabled={isCreatingPost}
+    <div className="bg-card dark:bg-card/90 rounded-lg shadow-sm p-4 mb-4">
+      <div className="flex space-x-3">
+        <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-border/40">
+          {user?.avatarCid ? (
+            <img
+              src={`https://ipfs.io/ipfs/${user.avatarCid}`}
+              alt={user.displayName}
+              className="h-full w-full object-cover"
             />
+          ) : (
+            <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+              {user?.displayName?.charAt(0) || user?.username?.charAt(0) || '?'}
+            </div>
+          )}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <form onSubmit={handleSubmit}>
+            <div className="mb-3">
+              <textarea
+                placeholder="What's on your mind?"
+                value={postText}
+                onChange={(e) => setPostText(e.target.value)}
+                className="w-full border-0 bg-transparent resize-none rounded-md focus:ring-0 text-foreground placeholder:text-muted-foreground min-h-[80px]"
+              />
+            </div>
             
-            {imageFile && (
-              <div className="mt-2 relative">
-                <div className="w-full rounded-lg overflow-hidden bg-gray-100 p-2">
-                  <div className="flex items-center">
-                    <Image className="h-5 w-5 mr-2 text-gray-500" />
-                    <span className="text-sm truncate">{imageFile.name}</span>
-                  </div>
-                </div>
-                <button 
+            <div className="flex items-center justify-between pt-2 border-t border-border/20">
+              <div className="flex space-x-2">
+                <button
                   type="button"
-                  className="absolute -top-1 -right-1 bg-gray-200 rounded-full p-1 text-gray-600 hover:bg-gray-300"
-                  onClick={() => setImageFile(null)}
+                  className="inline-flex items-center px-3 py-1.5 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 >
-                  <span className="text-xs">✕</span>
+                  <Image className="h-4 w-4 mr-2" />
+                  Photo
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center px-3 py-1.5 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  File
                 </button>
               </div>
-            )}
-            
-            <div className="flex mt-3 space-x-2">
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex-1"
-                onClick={triggerFileInput}
-                disabled={isCreatingPost}
-              >
-                <Image className="h-4 w-4" />
-                <span className="text-sm">Photo</span>
-              </Button>
               
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleFileChange}
-                disabled={isCreatingPost}
-              />
-              
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex-1"
-                onClick={() => {}} // This would be for attaching files other than images
-                disabled={isCreatingPost}
-              >
-                <File className="h-4 w-4" />
-                <span className="text-sm">File</span>
-              </Button>
-              
-              <Button
+              <button
                 type="submit"
-                className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-blue-600 flex-1"
-                disabled={!content.trim() || isCreatingPost}
+                disabled={!postText.trim()}
+                className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreatingPost ? (
-                  <Loader className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SendIcon className="h-4 w-4" />
-                )}
-                <span className="text-sm">Post</span>
-              </Button>
+                <Send className="h-4 w-4 mr-2" />
+                Post
+              </button>
             </div>
-          </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
-};
-
-export default CreatePost;
+}

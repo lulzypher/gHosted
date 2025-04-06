@@ -1,139 +1,108 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { useUser } from '@/contexts/UserContext';
-import { useIPFS } from '@/contexts/IPFSContext';
-import { 
-  Home, 
-  User, 
-  Users, 
-  Bookmark, 
-  Settings, 
-  HardDrive, 
-  Smartphone, 
-  CheckCircle, 
-  Loader 
-} from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { useAuth } from '@/hooks/use-auth';
+import { Home, User, Users, Bookmark, Settings, Laptop, Smartphone } from 'lucide-react';
 
-const LeftSidebar: React.FC = () => {
-  const { user, devices, getCurrentDevice } = useUser();
-  const { stats } = useIPFS();
+export function LeftSidebar() {
   const [location] = useLocation();
-
-  if (!user) return null;
-
-  const currentDevice = getCurrentDevice();
-  const pcDevice = devices.find(d => d.type === 'pc');
-  const mobileDevice = devices.find(d => d.type === 'mobile');
-  const usedStoragePercentage = (stats.totalSize / stats.allocatedSize) * 100;
-  const usedStorageMB = (stats.totalSize / (1024 * 1024)).toFixed(0);
-  const allocatedStorageGB = (stats.allocatedSize / (1024 * 1024 * 1024)).toFixed(1);
-
+  const { user } = useAuth();
+  
+  const isActive = (path: string) => location === path;
+  
+  const navItems = [
+    { icon: Home, label: 'Home', path: '/' },
+    { icon: User, label: 'Profile', path: '/profile' },
+    { icon: Users, label: 'Communities', path: '/communities' },
+    { icon: Bookmark, label: 'Saved Posts', path: '/saved' },
+    { icon: Settings, label: 'Settings', path: '/settings' },
+  ];
+  
   return (
-    <aside className="hidden md:block w-64 space-y-4">
-      <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
-        {/* User Profile Card */}
-        <div className="flex items-center space-x-3">
-          <div className="h-12 w-12 rounded-full overflow-hidden">
-            {user.avatarCid ? (
-              <img 
+    <div className="w-full max-w-[240px] h-[calc(100vh-3.5rem)] overflow-y-auto scrollbar-hide flex flex-col bg-background border-r border-border/20 dark:border-border/10">
+      <div className="p-4">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="flex-shrink-0 h-11 w-11 rounded-full overflow-hidden border border-border/40">
+            {user?.avatarCid ? (
+              <img
                 src={`https://ipfs.io/ipfs/${user.avatarCid}`}
-                alt={`${user.displayName}'s profile`}
+                alt={user.displayName}
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="h-full w-full flex items-center justify-center bg-gray-200 text-gray-600">
-                <User className="h-6 w-6" />
+              <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                {user?.displayName?.charAt(0) || user?.username?.charAt(0) || '?'}
               </div>
             )}
           </div>
-          <div>
-            <h2 className="font-semibold">{user.displayName}</h2>
-            <p className="text-xs text-gray-500 flex items-center">
-              <span className="truncate max-w-[150px]">{user.did}</span>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-foreground truncate">
+              {user?.displayName || user?.username}
+            </h2>
+            <p className="text-xs text-muted-foreground truncate">
+              {user?.did ? `${user.did.substring(0, 11)}...` : 'Anonymous'}
             </p>
           </div>
         </div>
         
-        {/* Navigation Menu */}
         <nav className="space-y-1">
-          <Link href="/">
-            <a className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${location === '/' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-100'}`}>
-              <Home className="h-5 w-5" />
-              <span>Home</span>
-            </a>
-          </Link>
-          <Link href="/profile">
-            <a className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${location === '/profile' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-100'}`}>
-              <User className="h-5 w-5" />
-              <span>Profile</span>
-            </a>
-          </Link>
-          <Link href="/communities">
-            <a className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${location === '/communities' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-100'}`}>
-              <Users className="h-5 w-5" />
-              <span>Communities</span>
-            </a>
-          </Link>
-          <Link href="/saved">
-            <a className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${location === '/saved' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-100'}`}>
-              <Bookmark className="h-5 w-5" />
-              <span>Saved Posts</span>
-            </a>
-          </Link>
-          <Link href="/settings">
-            <a className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${location === '/settings' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-100'}`}>
-              <Settings className="h-5 w-5" />
-              <span>Settings</span>
-            </a>
-          </Link>
+          {navItems.map((item) => (
+            <Link key={item.path} href={item.path}>
+              <a
+                className={`flex items-center px-3 py-2 text-sm rounded-md group transition-colors ${
+                  isActive(item.path)
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                }`}
+              >
+                <item.icon className={`h-5 w-5 mr-3 ${isActive(item.path) ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`} />
+                <span>{item.label}</span>
+              </a>
+            </Link>
+          ))}
         </nav>
       </div>
       
-      {/* Device Sync Status Card */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h3 className="text-sm font-semibold mb-3">Device Sync</h3>
-        
-        {/* PC Device */}
-        {pcDevice && (
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center space-x-2">
-              <HardDrive className="h-4 w-4 text-gray-600" />
-              <span className="text-sm">{pcDevice.name}</span>
-            </div>
-            <div className="flex items-center space-x-1 text-xs text-status-synced">
-              <CheckCircle className="h-3 w-3" />
-              <span>Synced</span>
-            </div>
+      <div className="mt-6 px-4">
+        <h3 className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          Device Sync
+        </h3>
+        <div className="space-y-2">
+          <div className="flex items-center px-3 py-2 text-sm rounded-md text-foreground bg-muted/30 dark:bg-muted/10">
+            <Laptop className="h-4 w-4 mr-3 text-green-500" />
+            <span className="flex-1">Desktop</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+              Synced
+            </span>
           </div>
-        )}
-        
-        {/* Mobile Device */}
-        {mobileDevice && (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Smartphone className="h-4 w-4 text-gray-600" />
-              <span className="text-sm">{mobileDevice.name}</span>
-            </div>
-            <div className="flex items-center space-x-1 text-xs text-status-syncing">
-              <Loader className="h-3 w-3 animate-spin" />
-              <span>Syncing</span>
-            </div>
-          </div>
-        )}
-        
-        {/* Storage Stats */}
-        <div className="mt-4 pt-3 border-t border-gray-100">
-          <h4 className="text-xs font-medium text-gray-500 mb-2">Local Storage</h4>
-          <Progress value={usedStoragePercentage} className="h-2.5" />
-          <div className="flex justify-between mt-1">
-            <span className="text-xs text-gray-500">{usedStorageMB} MB used</span>
-            <span className="text-xs text-gray-500">{allocatedStorageGB} GB allocated</span>
+          <div className="flex items-center px-3 py-2 text-sm rounded-md text-foreground bg-muted/30 dark:bg-muted/10">
+            <Smartphone className="h-4 w-4 mr-3 text-amber-500" />
+            <span className="flex-1">Mobile</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              Syncing
+            </span>
           </div>
         </div>
       </div>
-    </aside>
+      
+      <div className="mt-4 px-4">
+        <h3 className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          Local Storage
+        </h3>
+        <div className="px-3">
+          <div className="w-full h-2 rounded-full bg-muted/50 dark:bg-muted/20 overflow-hidden">
+            <div className="h-full bg-primary" style={{ width: '46%' }}></div>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>456 MB used</span>
+            <span>1 GB allocated</span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="mt-auto p-4 text-xs text-center text-muted-foreground">
+        <p>© 2025 gHosted - Decentralized</p>
+        <p className="mt-1">No central servers, just people.</p>
+      </div>
+    </div>
   );
-};
-
-export default LeftSidebar;
+}

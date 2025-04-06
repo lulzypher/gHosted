@@ -36,18 +36,20 @@ const NotFoundPage: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 text-center">
-      <h1 className="text-4xl font-bold mb-4">Page Not Found</h1>
+      <h1 className="text-4xl font-bold mb-4 text-foreground">Page Not Found</h1>
       
       {wasOffline ? (
         <div className="mb-6 max-w-md">
-          <div className="bg-yellow-50 text-yellow-800 p-4 rounded-lg mb-4">
+          <div className="bg-yellow-500/20 text-yellow-200 p-4 rounded-lg mb-4 border border-yellow-500/30">
             <p>You're currently offline. This page might not be available offline.</p>
             <p className="mt-2">Redirecting to home page in {countdownTime} seconds...</p>
           </div>
-          <p>You'll be redirected to the home page where you can view cached content.</p>
+          <p className="text-muted-foreground">
+            You'll be redirected to the home page where you can view cached content.
+          </p>
         </div>
       ) : (
-        <p className="text-gray-500 mb-6 max-w-md">
+        <p className="text-muted-foreground mb-6 max-w-md">
           The page you're looking for doesn't exist or might have been moved.
         </p>
       )}

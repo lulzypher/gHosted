@@ -7,100 +7,35 @@ import { useToast } from '@/hooks/use-toast';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { ProtectedRoute } from '@/lib/protected-route';
 import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
+import HomePageContent from '@/pages/home-page';
 
 // Landing page for unauthenticated users
 const LandingPage = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
-    <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
-      <h1 className="text-2xl font-bold text-center mb-6">gHosted</h1>
-      <p className="text-gray-600 text-center mb-4">
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="max-w-md w-full p-6 bg-card rounded-lg shadow-md">
+      <h1 className="text-2xl font-bold text-center mb-6 text-foreground">gHosted</h1>
+      <p className="text-muted-foreground text-center mb-4">
         A decentralized social platform connecting people across devices.
       </p>
       <div className="flex justify-center gap-4">
         <Link href="/auth">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          <a className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
             Login / Register
-          </button>
+          </a>
         </Link>
         <Link href="/about">
-          <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100">
+          <a className="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted/50">
             Learn More
-          </button>
+          </a>
         </Link>
       </div>
     </div>
   </div>
 );
 
-// Dashboard Home page for authenticated users
+// Home page is now imported from pages/home-page.tsx
 const HomePage = () => {
-  const { user, logoutMutation } = useAuth();
-  const navigate = useLocation()[1];
-  
-  const handleLogout = async () => {
-    try {
-      await logoutMutation.mutateAsync();
-      navigate('/auth');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
-  
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-blue-600">gHosted</h1>
-              </div>
-              <nav className="ml-6 flex space-x-8">
-                <Link href="/">
-                  <button className="inline-flex items-center px-1 pt-1 border-b-2 border-blue-500 text-sm font-medium text-gray-900">
-                    Home
-                  </button>
-                </Link>
-                <Link href="/about">
-                  <button className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                    About
-                  </button>
-                </Link>
-              </nav>
-            </div>
-            <div className="flex items-center">
-              <span className="text-sm text-gray-700 mr-4">
-                Welcome, {user?.displayName || user?.username}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-      
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 p-4 flex flex-col items-center justify-center">
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">Welcome to your gHosted Dashboard</h2>
-              <p className="text-gray-600 mb-6 text-center max-w-md">
-                This is your personal dashboard where you'll be able to manage your content,
-                connect with peers, and configure your IPFS settings.
-              </p>
-              <p className="text-gray-500 italic">
-                More features coming soon!
-              </p>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
+  return <HomePageContent />;
 };
 
 // Functional Auth Page with Login and Registration
@@ -215,61 +150,61 @@ const AuthPage = () => {
   };
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold text-center mb-6">
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="max-w-md w-full p-6 bg-card rounded-lg shadow-md">
+        <h1 className="text-2xl font-bold text-center mb-6 text-foreground">
           {mode === 'login' ? 'Login to gHosted' : 'Create a new account'}
         </h1>
         
         <form onSubmit={mode === 'login' ? handleLogin : handleRegister} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Username</label>
+            <label className="block text-sm font-medium text-foreground">Username</label>
             <input 
               type="text" 
               name="username"
               value={formData.username}
               onChange={handleChange}
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-primary focus:border-primary"
             />
           </div>
           
           {mode === 'register' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">Display Name</label>
+              <label className="block text-sm font-medium text-foreground">Display Name</label>
               <input 
                 type="text" 
                 name="displayName"
                 value={formData.displayName}
                 onChange={handleChange}
                 placeholder="How you'll appear to others"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="mt-1 block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-primary focus:border-primary"
               />
             </div>
           )}
           
           <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <label className="block text-sm font-medium text-foreground">Password</label>
             <input 
               type="password" 
               name="password"
               value={formData.password}
               onChange={handleChange}
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-primary focus:border-primary"
             />
           </div>
           
           {mode === 'register' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+              <label className="block text-sm font-medium text-foreground">Confirm Password</label>
               <input 
                 type="password" 
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 required
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="mt-1 block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-primary focus:border-primary"
               />
             </div>
           )}
@@ -278,11 +213,11 @@ const AuthPage = () => {
             <button 
               type="submit"
               disabled={isLoading}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
@@ -295,13 +230,13 @@ const AuthPage = () => {
           </div>
         </form>
         
-        <div className="mt-4 text-center text-sm text-gray-600">
+        <div className="mt-4 text-center text-sm text-muted-foreground">
           {mode === 'login' ? (
             <>
               Don't have an account?{' '}
               <button 
                 onClick={() => setMode('register')} 
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className="text-primary hover:text-primary/80 font-medium"
               >
                 Register
               </button>
@@ -311,7 +246,7 @@ const AuthPage = () => {
               Already have an account?{' '}
               <button 
                 onClick={() => setMode('login')} 
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className="text-primary hover:text-primary/80 font-medium"
               >
                 Login
               </button>
@@ -325,18 +260,18 @@ const AuthPage = () => {
 
 // About page
 const AboutPage = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
-    <div className="max-w-2xl w-full p-6 bg-white rounded-lg shadow-md">
-      <h1 className="text-2xl font-bold text-center mb-6">About gHosted</h1>
-      <p className="text-gray-600 mb-4">
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="max-w-2xl w-full p-6 bg-card rounded-lg shadow-md">
+      <h1 className="text-2xl font-bold text-center mb-6 text-foreground">About gHosted</h1>
+      <p className="text-muted-foreground mb-4">
         gHosted is a cutting-edge decentralized social platform that works across all devices.
         Unlike traditional social networks, gHosted does not rely on central servers 
         and allows you to use the platform even when offline.
       </p>
-      <p className="text-gray-600 mb-4">
+      <p className="text-foreground mb-4">
         Key features:
       </p>
-      <ul className="list-disc pl-5 mb-4 text-gray-600">
+      <ul className="list-disc pl-5 mb-4 text-muted-foreground">
         <li>Peer-to-peer networking without central servers</li>
         <li>Offline-first functionality</li>
         <li>Content preservation through IPFS technology</li>
@@ -345,9 +280,9 @@ const AboutPage = () => (
       </ul>
       <div className="flex justify-center mt-6">
         <Link href="/">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          <a className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
             Back to Home
-          </button>
+          </a>
         </Link>
       </div>
     </div>
@@ -356,14 +291,14 @@ const AboutPage = () => (
 
 // Not Found page
 const NotFoundPage = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
-    <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md text-center">
-      <h1 className="text-4xl font-bold text-gray-800 mb-4">404</h1>
-      <h2 className="text-2xl font-medium text-gray-600 mb-6">Page Not Found</h2>
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="max-w-md w-full p-6 bg-card rounded-lg shadow-md text-center">
+      <h1 className="text-6xl font-bold text-primary mb-4">404</h1>
+      <h2 className="text-2xl font-medium text-foreground mb-6">Page Not Found</h2>
       <Link href="/">
-        <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+        <a className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
           Back to Home
-        </button>
+        </a>
       </Link>
     </div>
   </div>
