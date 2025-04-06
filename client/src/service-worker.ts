@@ -1,10 +1,26 @@
 /// <reference lib="webworker" />
+/// <reference lib="es2020" />
+/// <reference no-default-lib="true"/>
+/// <reference lib="esnext" />
+/// <reference lib="esnext.array" />
+/// <reference lib="esnext.asynciterable" />
+/// <reference lib="esnext.intl" />
+/// <reference lib="esnext.symbol" />
+/// <reference lib="webworker" />
+/// <reference lib="webworker.importscripts" />
+/// <reference lib="webworker.iterable" />
 
 // This service worker can be customized!
 // See https://developers.google.com/web/tools/workbox/modules
 // for the list of available Workbox modules, or add your own!
 
+// Ensure proper typing for service worker
 declare const self: ServiceWorkerGlobalScope;
+
+// Make sure we're in a service worker context
+if (typeof self.addEventListener !== 'function') {
+  throw new Error('Service worker context not found');
+}
 
 const CACHE_NAME = 'ghosted-cache-v1';
 const STATIC_ASSETS = [
@@ -17,8 +33,13 @@ const STATIC_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
 
+// Define SyncEvent interface
+interface SyncEvent extends ExtendableEvent {
+  tag: string;
+}
+
 // Install event - cache static assets
-self.addEventListener('install', (event) => {
+self.addEventListener('install', (event: ExtendableEvent) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -30,7 +51,7 @@ self.addEventListener('install', (event) => {
 });
 
 // Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', (event: ExtendableEvent) => {
   const cacheWhitelist = [CACHE_NAME];
   
   event.waitUntil(
@@ -41,7 +62,7 @@ self.addEventListener('activate', (event) => {
             // Delete old caches
             return caches.delete(cacheName);
           }
-          return null;
+          return Promise.resolve();
         })
       );
     }).then(() => self.clients.claim())
@@ -49,7 +70,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // Fetch event - respond with cached resources or fetch from network
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', (event: FetchEvent) => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin) && 
       !event.request.url.startsWith('https://fonts.googleapis.com') &&
@@ -121,14 +142,14 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Handle messages from clients
-self.addEventListener('message', (event) => {
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
 // Background sync for offline posts
-self.addEventListener('sync', (event) => {
+self.addEventListener('sync', (event: SyncEvent) => {
   if (event.tag === 'sync-posts') {
     event.waitUntil(syncPosts());
   } else if (event.tag === 'sync-pins') {
@@ -145,7 +166,7 @@ async function syncPosts() {
     
     // Notify clients that sync is complete
     const clients = await self.clients.matchAll();
-    clients.forEach(client => {
+    clients.forEach((client: Client) => {
       client.postMessage({
         type: 'SYNC_COMPLETE',
         tag: 'sync-posts'
@@ -164,7 +185,7 @@ async function syncPins() {
     
     // Notify clients that sync is complete
     const clients = await self.clients.matchAll();
-    clients.forEach(client => {
+    clients.forEach((client: Client) => {
       client.postMessage({
         type: 'SYNC_COMPLETE',
         tag: 'sync-pins'

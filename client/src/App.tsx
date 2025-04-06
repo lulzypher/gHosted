@@ -1,44 +1,108 @@
+import React, { useState, useEffect } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Route, Switch } from 'wouter';
+import { Toaster } from '@/components/ui/toaster';
+
+// Import contexts
+import { WebSocketProvider } from '@/contexts/WebSocketContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { IPFSProvider } from '@/contexts/IPFSContext';
+import { OrbitDBProvider } from '@/contexts/OrbitDBContext';
+
+// Import components
+import WebSocketStatus from '@/components/WebSocketStatus';
+import { NetworkStatus as NetworkStatusEnum } from '@/types';
+import NetworkStatus from '@/components/NetworkStatus';
+
+// Import pages
+import HomePage from '@/pages/home';
+import LoginPage from '@/pages/login';
+import RegisterPage from '@/pages/register';
+import ProfilePage from '@/pages/profile';
+import NotFoundPage from '@/pages/not-found';
+
+// Import query client
+import { queryClient } from '@/lib/queryClient';
+
 function App() {
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatusEnum>(
+    navigator.onLine ? NetworkStatusEnum.ONLINE : NetworkStatusEnum.OFFLINE
+  );
+  const [peerCount, setPeerCount] = useState<number>(0);
+
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setNetworkStatus(NetworkStatusEnum.ONLINE);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setNetworkStatus(NetworkStatusEnum.OFFLINE);
+    };
+
+    // Simulate peer connections for demo
+    const interval = setInterval(() => {
+      if (isOnline) {
+        // Random number between 1 and 5 for demo
+        setPeerCount(Math.floor(Math.random() * 5) + 1);
+      } else {
+        setPeerCount(0);
+      }
+    }, 10000);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, [isOnline]);
+
   return (
-    <div style={{ 
-      padding: '20px', 
-      maxWidth: '800px', 
-      margin: '0 auto', 
-      fontFamily: 'sans-serif', 
-      textAlign: 'center' 
-    }}>
-      <h1 style={{ color: '#0066ff', fontSize: '32px', marginBottom: '20px' }}>
-        gHosted - Basic Test
-      </h1>
-      <p style={{ marginBottom: '20px', fontSize: '16px' }}>
-        This is a basic test to check if React rendering is working at all.
-      </p>
-      <div style={{ 
-        padding: '20px', 
-        border: '1px solid #ccc', 
-        borderRadius: '8px', 
-        background: '#f8f9fa',
-        marginBottom: '20px'
-      }}>
-        <p>Current time: {new Date().toLocaleTimeString()}</p>
-      </div>
-      <button 
-        style={{ 
-          padding: '10px 20px', 
-          background: '#0066ff', 
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          fontSize: '16px',
-          cursor: 'pointer'
-        }}
-        onClick={() => {
-          alert('Button clicked!');
-        }}
-      >
-        Click Me
-      </button>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <UserProvider>
+        <WebSocketProvider>
+          <IPFSProvider>
+            <OrbitDBProvider>
+              <div className="min-h-screen flex flex-col">
+                {/* Status Bar */}
+                <div className="bg-gray-100 dark:bg-gray-800 py-1 px-4 flex justify-end items-center text-sm border-b">
+                  <div className="flex space-x-4 items-center">
+                    <NetworkStatus status={networkStatus} peerCount={peerCount} />
+                    <WebSocketStatus />
+                  </div>
+                </div>
+
+                {/* Main Content */}
+                <div className="flex-1">
+                  <Switch>
+                    <Route path="/" component={HomePage} />
+                    <Route path="/login" component={LoginPage} />
+                    <Route path="/register" component={RegisterPage} />
+                    <Route path="/profile/:id?" component={ProfilePage} />
+                    <Route component={NotFoundPage} />
+                  </Switch>
+                </div>
+
+                {/* Footer */}
+                <footer className="bg-gray-100 dark:bg-gray-800 py-4 border-t text-center text-sm text-gray-600 dark:text-gray-400">
+                  <p>gHosted - Decentralized Social Media {new Date().getFullYear()}</p>
+                  <p className="text-xs mt-1">Powered by IPFS and OrbitDB</p>
+                </footer>
+
+                {/* Toast notifications */}
+                <Toaster />
+              </div>
+            </OrbitDBProvider>
+          </IPFSProvider>
+        </WebSocketProvider>
+      </UserProvider>
+    </QueryClientProvider>
   );
 }
 

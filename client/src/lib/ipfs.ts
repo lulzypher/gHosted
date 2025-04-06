@@ -20,14 +20,18 @@ export const initIPFS = async (): Promise<IPFSHTTPClient> => {
     
     try {
       // Fallback to Infura IPFS gateway
+      const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID || '';
+      const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET || '';
+      
+      // Use browser's btoa instead of Buffer.from for base64 encoding
+      const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
+      
       ipfs = create({
         host: 'ipfs.infura.io',
         port: 5001,
         protocol: 'https',
         headers: {
-          authorization: 'Basic ' + Buffer.from(
-            process.env.INFURA_IPFS_PROJECT_ID + ':' + process.env.INFURA_IPFS_PROJECT_SECRET
-          ).toString('base64')
+          authorization: auth
         }
       });
       
@@ -56,8 +60,10 @@ export const addToIPFS = async (content: string | Blob): Promise<string> => {
     
     let result;
     if (typeof content === 'string') {
-      // Add string content
-      result = await ipfsInstance.add(Buffer.from(content));
+      // Add string content - use TextEncoder for browser compatibility
+      const encoder = new TextEncoder();
+      const data = encoder.encode(content);
+      result = await ipfsInstance.add(data);
     } else {
       // Add blob/file content
       result = await ipfsInstance.add(content);
@@ -158,16 +164,24 @@ export const getIPFSStats = async (): Promise<IPFSStats> => {
     
     return {
       pinnedCount,
+      repoSize: parseInt(repoStats.repoSize.toString()),
       totalSize: parseInt(repoStats.repoSize.toString()),
-      allocatedSize: parseInt((repoStats.storageMax || '1073741824').toString()), // Default to 1GB if undefined
+      numObjects: parseInt(repoStats.numObjects.toString()),
+      storageMax: parseInt((repoStats.storageMax || '1073741824').toString()),
+      allocatedSize: parseInt((repoStats.storageMax || '1073741824').toString()),
+      peersConnected: 0 // This would need to be populated from the IPFS swarm
     };
   } catch (error) {
     console.error('Error getting IPFS stats:', error);
     // Return default stats on error
     return {
       pinnedCount: 0,
+      repoSize: 0,
       totalSize: 0,
+      numObjects: 0,
+      storageMax: 1073741824, // 1GB default
       allocatedSize: 1073741824, // 1GB default
+      peersConnected: 0
     };
   }
 };

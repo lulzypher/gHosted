@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { PeerConnection } from '@/types';
+import { PeerConnection, PeerConnectionStatus } from '@/types';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { useWebSocket } from '@/contexts/WebSocketContext';
@@ -29,7 +29,9 @@ export const usePeerConnections = () => {
   // Update state for online peers count
   useEffect(() => {
     if (Array.isArray(peerConnections)) {
-      const onlineCount = peerConnections.filter((peer) => peer && peer.status === 'online').length;
+      const onlineCount = peerConnections.filter(
+        (peer) => peer && peer.status === PeerConnectionStatus.CONNECTED
+      ).length;
       setOnlinePeers(onlineCount);
     }
   }, [peerConnections]);
@@ -63,7 +65,7 @@ export const usePeerConnections = () => {
       const response = await apiRequest('POST', '/api/peer-connections', {
         userId: user.id,
         peerId,
-        status: 'online'
+        status: PeerConnectionStatus.CONNECTED
       });
       
       return response.json();

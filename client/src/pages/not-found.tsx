@@ -1,91 +1,77 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'wouter';
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { AlertCircle, Wifi, WifiOff, Ghost } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
+import { ArrowLeft, Home, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-export default function NotFound() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [time, setTime] = useState(new Date().toLocaleTimeString());
+const NotFoundPage: React.FC = () => {
+  const [, setLocation] = useLocation();
+  const [wasOffline, setWasOffline] = useState<boolean>(false);
+  const [countdownTime, setCountdownTime] = useState<number>(10);
 
+  // Check if we're offline
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    const updateTime = () => setTime(new Date().toLocaleTimeString());
+    const isOffline = !navigator.onLine;
+    setWasOffline(isOffline);
     
-    // Set up event listeners
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    // Update time every second
-    const interval = setInterval(updateTime, 1000);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(interval);
-    };
-  }, []);
-
-  const testFetch = async () => {
-    try {
-      const response = await fetch('/api/healthcheck');
-      console.log('Fetch response:', response.status);
-      alert(`API response status: ${response.status}`);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      alert(`Fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // If we're offline, start a countdown timer and redirect to home
+    // since we might have cached content there
+    let interval: ReturnType<typeof setInterval>;
+    if (isOffline && countdownTime > 0) {
+      interval = setInterval(() => {
+        setCountdownTime((prevTime) => {
+          const newTime = prevTime - 1;
+          if (newTime <= 0) {
+            clearInterval(interval);
+            setLocation('/');
+          }
+          return newTime;
+        });
+      }, 1000);
     }
-  };
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [countdownTime, setLocation]);
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex flex-col items-center mb-6">
-            <Ghost className="h-16 w-16 text-primary mb-4" />
-            <h1 className="text-2xl font-bold text-gray-900">gHosted - Debug Page</h1>
+    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 text-center">
+      <h1 className="text-4xl font-bold mb-4">Page Not Found</h1>
+      
+      {wasOffline ? (
+        <div className="mb-6 max-w-md">
+          <div className="bg-yellow-50 text-yellow-800 p-4 rounded-lg mb-4">
+            <p>You're currently offline. This page might not be available offline.</p>
+            <p className="mt-2">Redirecting to home page in {countdownTime} seconds...</p>
           </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-gray-600">
-                404 Page Not Found - Original page couldn't be loaded
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {isOnline ? (
-                <Wifi className="h-5 w-5 text-green-500 flex-shrink-0" />
-              ) : (
-                <WifiOff className="h-5 w-5 text-red-500 flex-shrink-0" />
-              )}
-              <p className="text-sm">
-                Network Status: <span className={isOnline ? "text-green-600" : "text-red-600"}>
-                  {isOnline ? "Online" : "Offline"}
-                </span>
-              </p>
-            </div>
-            
-            <div className="text-sm text-gray-600">
-              Current Time: {time}
-            </div>
-          </div>
-        </CardContent>
+          <p>You'll be redirected to the home page where you can view cached content.</p>
+        </div>
+      ) : (
+        <p className="text-gray-500 mb-6 max-w-md">
+          The page you're looking for doesn't exist or might have been moved.
+        </p>
+      )}
+      
+      <div className="flex flex-wrap gap-4 justify-center">
+        <Button
+          variant="outline"
+          onClick={() => window.history.back()}
+          className="flex items-center"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Go Back
+        </Button>
         
-        <CardFooter className="flex flex-col gap-2">
-          <Button className="w-full" onClick={testFetch}>
-            Test API Connection
-          </Button>
-          <Link href="/">
-            <Button variant="outline" className="w-full">
-              Try Home Page
-            </Button>
-          </Link>
-        </CardFooter>
-      </Card>
+        <Button
+          onClick={() => setLocation('/')}
+          className="flex items-center"
+        >
+          <Home className="mr-2 h-4 w-4" />
+          Home Page
+        </Button>
+      </div>
     </div>
   );
-}
+};
+
+export default NotFoundPage;

@@ -11,3 +11,42 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* Status colors */
+.text-status-synced {
+  color: #16a34a; /* green-600 */
+}
+
+.text-status-syncing {
+  color: #ca8a04; /* amber-600 */
+}
+
+.text-status-error {
+  color: #dc2626; /* red-600 */
+}
+
+/* Online/Offline UI states */
+.offline-overlay {
+  @apply fixed inset-0 bg-gray-900/70 z-50 backdrop-blur-sm flex items-center justify-center;
+}
+
+.offline-message {
+  @apply bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md mx-auto text-center;
+}
+
+/* Status indicators */
+.status-indicator {
+  @apply inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium;
+}
+
+.status-indicator-online {
+  @apply bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400;
+}
+
+.status-indicator-offline {
+  @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+}
+
+.status-indicator-connecting {
+  @apply bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400;
+}

@@ -1,83 +1,94 @@
-// Common types used throughout the application
+// Network status enumeration
+export enum NetworkStatus {
+  ONLINE = 'online',
+  OFFLINE = 'offline',
+  CONNECTING = 'connecting'
+}
 
+// Sync status enumeration
+export enum SyncStatus {
+  SYNCED = 'synced',
+  SYNCING = 'syncing',
+  ERROR = 'error'
+}
+
+// Pin type enumeration
+export enum PinType {
+  LOCAL = 'local',    // Pin to local device only (Heart reaction)
+  REMOTE = 'remote',  // Pin to remote devices as well (Fire Heart reaction)
+  ALL = 'all'         // Matches either type for querying purposes
+}
+
+// Device type enumeration
+export enum DeviceType {
+  DESKTOP = 'desktop',
+  MOBILE = 'mobile',
+  TABLET = 'tablet',
+  OTHER = 'other'
+}
+
+// Peer connection status
+export enum PeerConnectionStatus {
+  PENDING = 'pending',
+  CONNECTED = 'connected',
+  DISCONNECTED = 'disconnected',
+  FAILED = 'failed'
+}
+
+// IPFS statistics interface
+export interface IPFSStats {
+  repoSize: number;
+  numObjects: number;
+  storageMax: number;
+  peersConnected: number;
+  totalSize?: number; // Added for compatibility with existing code
+  pinnedCount?: number; // Count of pinned contents
+  allocatedSize?: number; // Total allocated storage size
+}
+
+// User interface
 export interface User {
   id: number;
   username: string;
   displayName: string;
   bio?: string;
-  avatarCid?: string;
   did: string;
+  publicKey: string;
+  avatarUrl?: string;
+  avatarCid?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
+// Post interface
 export interface Post {
   id: number;
   userId: number;
-  content: string;
-  imageCid?: string;
   contentCid: string;
-  createdAt: string;
-  user?: User; // To be populated from the user data
+  type: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export interface Device {
-  id: number;
-  userId: number;
-  deviceId: string;
-  name: string;
-  type: string; // "pc" or "mobile"
-  lastSynced: string;
-}
-
-export interface PeerConnection {
-  id: number;
-  userId: number;
-  peerId: string;
-  lastSeen: string;
-  status: string; // "online", "offline", "syncing"
-  user?: User; // To be populated from the user data
-}
-
+// Pinned Content interface
 export interface PinnedContent {
   id: number;
   userId: number;
   contentCid: string;
+  postId: number;
   pinType: PinType;
-  postId?: number;
-  pinnedAt: string;
-  deviceId?: string;
-  post?: Post; // To be populated from the post data
+  deviceId?: number;
+  pinnedAt: Date;
 }
 
-export enum PinType {
-  LIKE = "like",
-  LOVE = "love"
-}
-
-export enum NetworkStatus {
-  ONLINE = "online",
-  OFFLINE = "offline",
-  CONNECTING = "connecting"
-}
-
-export enum SyncStatus {
-  SYNCED = "synced",
-  SYNCING = "syncing",
-  ERROR = "error"
-}
-
-export interface IPFSPinnedContent {
-  cid: string;
-  type: string; // Can be "post", "image", etc.
-  size: number;
-  devices: string[]; // List of device IDs where content is pinned
-}
-
-export interface UserWithDevices extends User {
-  devices: Device[];
-}
-
-export interface IPFSStats {
-  pinnedCount: number;
-  totalSize: number;
-  allocatedSize: number;
+// Peer connection interface
+export interface PeerConnection {
+  id: number;
+  userId: number;
+  peerId: string;
+  status: PeerConnectionStatus;
+  lastSeen: Date;
+  deviceId?: number;
+  createdAt: Date;
+  updatedAt: Date;
 }

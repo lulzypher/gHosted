@@ -12,8 +12,9 @@ let pinnedContentsDB: any;
 export const initOrbitDB = async (did: string): Promise<OrbitDB> => {
   try {
     const ipfs = await getIPFS();
+    // Use IndexedDB by default in browsers
     orbitdb = await OrbitDB.createInstance(ipfs, {
-      directory: `./orbitdb/${did}`
+      directory: did // Just use DID as the directory name (no path prefix)
     });
     
     return orbitdb;

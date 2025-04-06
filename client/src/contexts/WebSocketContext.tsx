@@ -16,7 +16,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isConnected, setIsConnected] = useState(false);
   const [lastActivity, setLastActivity] = useState<Date | null>(null);
   const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Function to establish WebSocket connection
   const connectWebSocket = () => {
@@ -36,9 +36,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ws.current.close();
     }
 
-    // Determine WebSocket URL based on current protocol
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/ws?userId=${user.id}`;
+    // Determine WebSocket URL based on current protocol (check if window is defined for SSR compatibility)
+    const protocol = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+    const host = (typeof window !== 'undefined') ? window.location.host : 'localhost:5000';
+    const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}`;
 
     // Create new WebSocket connection
     try {
@@ -48,9 +49,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.log('WebSocket connected');
         setIsConnected(true);
         // Clear any reconnect timeouts
-        if (reconnectTimeout.current) {
-          clearTimeout(reconnectTimeout.current);
-          reconnectTimeout.current = undefined;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = undefined;
         }
       };
 
@@ -59,9 +60,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsConnected(false);
 
         // Try to reconnect after 5 seconds
-        if (!reconnectTimeout.current) {
-          reconnectTimeout.current = setTimeout(() => {
-            reconnectTimeout.current = undefined;
+        if (!reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = undefined;
             connectWebSocket();
           }, 5000);
         }
@@ -78,7 +79,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       ws.current.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
+          const data = JSON.parse(event.data as string);
           console.log('WebSocket message received:', data);
           
           // Update last activity time whenever we receive any message
@@ -128,8 +129,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (ws.current) {
         ws.current.close();
       }
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
   }, [user?.id]);
@@ -152,6 +153,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Handle network online/offline events
   useEffect(() => {
+    // Browser check for SSR compatibility
+    if (typeof window === 'undefined') return;
+    
     const handleOnline = () => {
       console.log('Network came online');
       connectWebSocket();
@@ -164,7 +168,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -173,9 +177,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Manually reconnect (can be called when needed)
   const reconnect = () => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-      reconnectTimeout.current = undefined;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = undefined;
     }
     connectWebSocket();
   };
