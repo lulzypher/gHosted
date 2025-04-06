@@ -420,7 +420,32 @@ export async function resolveConflict(
   await tx.done;
 }
 
-// Initialize the local store
-initializeLocalStore().catch(err => 
-  console.error('Failed to initialize local storage:', err)
-);
+// Create a class to handle all local store operations
+class LocalStore {
+  private db: Promise<IDBPDatabase<GhostDBSchema>>;
+  
+  constructor() {
+    // Initialize the database connection
+    this.db = initializeLocalStore();
+  }
+  
+  // Add methods as needed by other components
+  
+  // Get the database instance
+  async getDB() {
+    return await this.db;
+  }
+  
+  // Method to check if the store is ready
+  async isReady() {
+    try {
+      await this.db;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+}
+
+// Export a singleton instance
+export const localStore = new LocalStore();

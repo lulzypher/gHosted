@@ -9,8 +9,10 @@ import { ProtectedRoute } from '@/lib/protected-route';
 import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
 import { PeerDiscoveryProvider } from '@/contexts/PeerDiscoveryContext';
 import { SyncProvider } from '@/contexts/SyncContext';
+import { P2PProvider } from '@/contexts/P2PContext';
 import { ConflictResolution } from '@/components/ConflictResolution';
 import HomePageContent from '@/pages/home-page';
+import logoImage from "@assets/logoTransparent1.png";
 
 // Landing page for unauthenticated users
 const LandingPage = () => (
@@ -311,19 +313,21 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <PeerDiscoveryProvider>
-          <SyncProvider>
-            <Switch>
-              <ProtectedRoute path="/" component={HomePage} />
-              <Route path="/auth" component={AuthPage} />
-              <Route path="/about" component={AboutPage} />
-              <Route component={NotFoundPage} />
-            </Switch>
-            {/* Show conflict resolution dialog when needed */}
-            <ConflictResolution />
-            <Toaster />
-          </SyncProvider>
-        </PeerDiscoveryProvider>
+        <P2PProvider>
+          <PeerDiscoveryProvider>
+            <SyncProvider>
+              <Switch>
+                <ProtectedRoute path="/" component={HomePage} />
+                <Route path="/auth" component={AuthPage} />
+                <Route path="/about" component={AboutPage} />
+                <Route component={NotFoundPage} />
+              </Switch>
+              {/* Show conflict resolution dialog when needed */}
+              <ConflictResolution />
+              <Toaster />
+            </SyncProvider>
+          </PeerDiscoveryProvider>
+        </P2PProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

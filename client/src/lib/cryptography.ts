@@ -1,149 +1,361 @@
 /**
- * Cryptography utilities for gHosted
- * This module provides functions for generating and managing cryptographic keys,
- * signing data, and verifying signatures.
+ * Cryptography Module
+ * 
+ * This module provides cryptographic functions for secure user identification,
+ * message signing, encryption, and decryption.
+ * 
+ * The implementation uses the Web Crypto API for secure cryptographic operations.
  */
 
-// TypeScript type augmentation to add crypto to Window
-declare global {
-  interface Window {
-    crypto: Crypto;
+// Type definitions for cryptographic operations
+export interface KeyPair {
+  publicKey: string; // Base64 encoded public key
+  privateKey: string; // Base64 encoded private key
+}
+
+export interface EncryptedData {
+  iv: string; // Base64 encoded initialization vector
+  ciphertext: string; // Base64 encoded encrypted data
+}
+
+export interface SignedMessage {
+  message: string;
+  signature: string; // Base64 encoded signature
+  publicKey: string; // Base64 encoded public key of the signer
+}
+
+// Generate a new cryptographic key pair
+export async function generateKeyPair(): Promise<KeyPair> {
+  try {
+    // Use WebCrypto to generate RSA key pair
+    const keyPair = await window.crypto.subtle.generateKey(
+      {
+        name: 'RSA-OAEP',
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+        hash: { name: 'SHA-256' },
+      },
+      true, // extractable
+      ['encrypt', 'decrypt'] // usages
+    );
+
+    // Export the public key
+    const publicKeyBuffer = await window.crypto.subtle.exportKey(
+      'spki',
+      keyPair.publicKey
+    );
+
+    // Export the private key
+    const privateKeyBuffer = await window.crypto.subtle.exportKey(
+      'pkcs8',
+      keyPair.privateKey
+    );
+
+    // Convert to base64
+    const publicKey = bufferToBase64(publicKeyBuffer);
+    const privateKey = bufferToBase64(privateKeyBuffer);
+
+    return { publicKey, privateKey };
+  } catch (error) {
+    console.error('Error generating key pair:', error);
+    throw new Error('Failed to generate cryptographic keys');
   }
 }
 
-/**
- * Generate a new key pair for a user
- * @returns {Promise<{publicKey: string, privateKey: string}>} Public and private key pair
- */
-export async function generateKeyPair(): Promise<{publicKey: string, privateKey: string}> {
-  // Use the Web Crypto API to generate an RSA key pair
-  const keyPair = await window.crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
-      hash: "SHA-256",
-    },
-    true, // extractable
-    ["sign", "verify"] // key usages
-  );
+// Sign a message using a private key
+export async function signMessage(message: string, privateKeyBase64: string): Promise<string> {
+  try {
+    // Convert base64 private key to buffer
+    const privateKeyBuffer = base64ToBuffer(privateKeyBase64);
 
-  // Export the keys to JWK format
-  const publicKeyJwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
-  const privateKeyJwk = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+    // Import the private key
+    const privateKey = await window.crypto.subtle.importKey(
+      'pkcs8',
+      privateKeyBuffer,
+      {
+        name: 'RSA-PSS',
+        hash: { name: 'SHA-256' },
+      },
+      false, // not extractable
+      ['sign']
+    );
 
-  // Convert JWK to strings for storage
-  return {
-    publicKey: JSON.stringify(publicKeyJwk),
-    privateKey: JSON.stringify(privateKeyJwk)
-  };
+    // Convert message to buffer
+    const messageBuffer = new TextEncoder().encode(message);
+
+    // Sign the message
+    const signatureBuffer = await window.crypto.subtle.sign(
+      {
+        name: 'RSA-PSS',
+        saltLength: 32,
+      },
+      privateKey,
+      messageBuffer
+    );
+
+    // Convert signature to base64
+    return bufferToBase64(signatureBuffer);
+  } catch (error) {
+    console.error('Error signing message:', error);
+    throw new Error('Failed to sign message');
+  }
 }
 
-/**
- * Import a public key from JWK format string
- * @param {string} publicKeyJwk - Public key in JWK format as a string
- * @returns {Promise<CryptoKey>} Imported public key
- */
-export async function importPublicKey(publicKeyJwk: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(publicKeyJwk);
-  return await window.crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    true,
-    ["verify"]
-  );
-}
-
-/**
- * Import a private key from JWK format string
- * @param {string} privateKeyJwk - Private key in JWK format as a string
- * @returns {Promise<CryptoKey>} Imported private key
- */
-export async function importPrivateKey(privateKeyJwk: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(privateKeyJwk);
-  return await window.crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    true,
-    ["sign"]
-  );
-}
-
-/**
- * Sign data with a private key
- * @param {string} privateKeyJwk - Private key in JWK format as a string
- * @param {string} data - Data to sign
- * @returns {Promise<string>} Base64-encoded signature
- */
-export async function signData(privateKeyJwk: string, data: string): Promise<string> {
-  const privateKey = await importPrivateKey(privateKeyJwk);
-  const encodedData = new TextEncoder().encode(data);
-  const signature = await window.crypto.subtle.sign(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-    },
-    privateKey,
-    encodedData
-  );
-  return arrayBufferToBase64(signature);
-}
-
-/**
- * Verify a signature with a public key
- * @param {string} publicKeyJwk - Public key in JWK format as a string
- * @param {string} signature - Base64-encoded signature
- * @param {string} data - Original data that was signed
- * @returns {Promise<boolean>} Whether the signature is valid
- */
+// Verify a signature using a public key
 export async function verifySignature(
-  publicKeyJwk: string,
+  message: string,
   signature: string,
-  data: string
+  publicKeyBase64: string
 ): Promise<boolean> {
-  const publicKey = await importPublicKey(publicKeyJwk);
-  const encodedData = new TextEncoder().encode(data);
-  const signatureBuffer = base64ToArrayBuffer(signature);
-  return await window.crypto.subtle.verify(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-    },
-    publicKey,
-    signatureBuffer,
-    encodedData
-  );
+  try {
+    // Convert base64 public key to buffer
+    const publicKeyBuffer = base64ToBuffer(publicKeyBase64);
+
+    // Import the public key
+    const publicKey = await window.crypto.subtle.importKey(
+      'spki',
+      publicKeyBuffer,
+      {
+        name: 'RSA-PSS',
+        hash: { name: 'SHA-256' },
+      },
+      false, // not extractable
+      ['verify']
+    );
+
+    // Convert message and signature to buffer
+    const messageBuffer = new TextEncoder().encode(message);
+    const signatureBuffer = base64ToBuffer(signature);
+
+    // Verify the signature
+    return await window.crypto.subtle.verify(
+      {
+        name: 'RSA-PSS',
+        saltLength: 32,
+      },
+      publicKey,
+      signatureBuffer,
+      messageBuffer
+    );
+  } catch (error) {
+    console.error('Error verifying signature:', error);
+    return false;
+  }
 }
 
-/**
- * Generate a deterministic DID from a public key
- * @param {string} publicKeyJwk - Public key in JWK format as a string
- * @returns {Promise<string>} did:key: identifier
- */
-export async function generateDID(publicKeyJwk: string): Promise<string> {
-  // Create a hash of the public key
-  const publicKeyObj = JSON.parse(publicKeyJwk);
-  const publicKeyStr = publicKeyObj.n; // Use modulus as the identifying factor
-  const encoder = new TextEncoder();
-  const data = encoder.encode(publicKeyStr);
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  // Return a did:key identifier with the hash
-  return `did:key:z${hashHex}`;
+// Encrypt data using a public key
+export async function encryptData(data: string, publicKeyBase64: string): Promise<EncryptedData> {
+  try {
+    // Convert base64 public key to buffer
+    const publicKeyBuffer = base64ToBuffer(publicKeyBase64);
+
+    // Import the public key
+    const publicKey = await window.crypto.subtle.importKey(
+      'spki',
+      publicKeyBuffer,
+      {
+        name: 'RSA-OAEP',
+        hash: { name: 'SHA-256' },
+      },
+      false, // not extractable
+      ['encrypt']
+    );
+
+    // Generate IV
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+    // Convert data to buffer
+    const dataBuffer = new TextEncoder().encode(data);
+
+    // Encrypt the data
+    const ciphertextBuffer = await window.crypto.subtle.encrypt(
+      {
+        name: 'RSA-OAEP',
+      },
+      publicKey,
+      dataBuffer
+    );
+
+    // Convert to base64
+    const ciphertext = bufferToBase64(ciphertextBuffer);
+    const ivBase64 = bufferToBase64(iv);
+
+    return { iv: ivBase64, ciphertext };
+  } catch (error) {
+    console.error('Error encrypting data:', error);
+    throw new Error('Failed to encrypt data');
+  }
 }
 
-/**
- * Helper function to convert an ArrayBuffer to a Base64 string
- */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+// Decrypt data using a private key
+export async function decryptData(
+  encryptedData: EncryptedData,
+  privateKeyBase64: string
+): Promise<string> {
+  try {
+    // Convert base64 private key to buffer
+    const privateKeyBuffer = base64ToBuffer(privateKeyBase64);
+
+    // Import the private key
+    const privateKey = await window.crypto.subtle.importKey(
+      'pkcs8',
+      privateKeyBuffer,
+      {
+        name: 'RSA-OAEP',
+        hash: { name: 'SHA-256' },
+      },
+      false, // not extractable
+      ['decrypt']
+    );
+
+    // Convert ciphertext and IV to buffer
+    const ciphertextBuffer = base64ToBuffer(encryptedData.ciphertext);
+    const ivBuffer = base64ToBuffer(encryptedData.iv);
+
+    // Decrypt the data
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      {
+        name: 'RSA-OAEP',
+        iv: ivBuffer,
+      },
+      privateKey,
+      ciphertextBuffer
+    );
+
+    // Convert to string
+    return new TextDecoder().decode(decryptedBuffer);
+  } catch (error) {
+    console.error('Error decrypting data:', error);
+    throw new Error('Failed to decrypt data');
+  }
+}
+
+// Encrypt private key using a password
+export async function encryptPrivateKey(privateKey: string, password: string): Promise<EncryptedData> {
+  try {
+    // Derive a key from the password
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits', 'deriveKey']
+    );
+
+    const derivedKey = await window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+
+    // Generate IV
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+    // Encrypt the private key
+    const privateKeyBuffer = new TextEncoder().encode(privateKey);
+    const ciphertextBuffer = await window.crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+      },
+      derivedKey,
+      privateKeyBuffer
+    );
+
+    // Combine salt with ciphertext
+    const combinedBuffer = new Uint8Array(salt.length + ciphertextBuffer.byteLength);
+    combinedBuffer.set(salt);
+    combinedBuffer.set(new Uint8Array(ciphertextBuffer), salt.length);
+
+    // Convert to base64
+    const ciphertext = bufferToBase64(combinedBuffer);
+    const ivBase64 = bufferToBase64(iv);
+
+    return { iv: ivBase64, ciphertext };
+  } catch (error) {
+    console.error('Error encrypting private key:', error);
+    throw new Error('Failed to encrypt private key');
+  }
+}
+
+// Decrypt private key using a password
+export async function decryptPrivateKey(
+  encryptedData: EncryptedData,
+  password: string
+): Promise<string> {
+  try {
+    // Convert ciphertext and IV to buffer
+    const combinedBuffer = base64ToBuffer(encryptedData.ciphertext);
+    const ivBuffer = base64ToBuffer(encryptedData.iv);
+
+    // Extract salt from combined buffer
+    const salt = combinedBuffer.slice(0, 16);
+    const ciphertextBuffer = combinedBuffer.slice(16);
+
+    // Derive a key from the password
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits', 'deriveKey']
+    );
+
+    const derivedKey = await window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    // Decrypt the private key
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBuffer,
+      },
+      derivedKey,
+      ciphertextBuffer
+    );
+
+    // Convert to string
+    return new TextDecoder().decode(decryptedBuffer);
+  } catch (error) {
+    console.error('Error decrypting private key:', error);
+    throw new Error('Failed to decrypt private key');
+  }
+}
+
+// Generate a Decentralized Identifier (DID) from a public key
+export function generateDID(publicKey: string): string {
+  try {
+    // Create a DID using the did:key method
+    // In a real implementation, this would hash the public key in a specific way
+    // For simplicity, we're just taking the first 32 chars of the base64 public key
+    const keyId = publicKey.substring(0, 32).replace(/[+/=]/g, '');
+    return `did:key:z${keyId}`;
+  } catch (error) {
+    console.error('Error generating DID:', error);
+    throw new Error('Failed to generate DID');
+  }
+}
+
+// Helper function to convert an ArrayBuffer to a Base64 string
+function bufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -152,136 +364,26 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-/**
- * Helper function to convert a Base64 string to an ArrayBuffer
- */
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+// Helper function to convert a Base64 string to an ArrayBuffer
+function base64ToBuffer(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
-  return bytes.buffer;
+  return bytes;
 }
 
-/**
- * Encrypt a private key with a user's password before storage
- * @param {string} privateKeyJwk - Private key in JWK format as a string
- * @param {string} password - User's password
- * @returns {Promise<string>} Encrypted private key
- */
-export async function encryptPrivateKey(
-  privateKeyJwk: string, 
-  password: string
-): Promise<string> {
-  // Derive an encryption key from the password
-  const encoder = new TextEncoder();
-  const passwordData = encoder.encode(password);
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    passwordData,
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits", "deriveKey"]
-  );
-  
-  const key = await window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-  
-  // Encrypt the private key
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const privateKeyData = encoder.encode(privateKeyJwk);
-  
-  const encryptedData = await window.crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv
-    },
-    key,
-    privateKeyData
-  );
-  
-  // Combine the encrypted data with the salt and IV for later decryption
-  const encryptedArray = new Uint8Array(encryptedData);
-  const result = new Uint8Array(salt.length + iv.length + encryptedArray.length);
-  result.set(salt, 0);
-  result.set(iv, salt.length);
-  result.set(encryptedArray, salt.length + iv.length);
-  
-  return arrayBufferToBase64(result.buffer);
+// Generate a random seed for deterministic key generation
+export function generateRandomSeed(): string {
+  const array = new Uint8Array(32);
+  window.crypto.getRandomValues(array);
+  return bufferToBase64(array);
 }
 
-/**
- * Decrypt an encrypted private key with a user's password
- * @param {string} encryptedPrivateKey - Encrypted private key as a Base64 string
- * @param {string} password - User's password
- * @returns {Promise<string>} Decrypted private key in JWK format
- */
-export async function decryptPrivateKey(
-  encryptedPrivateKey: string, 
-  password: string
-): Promise<string> {
-  // Decode the encrypted data
-  const encryptedData = base64ToArrayBuffer(encryptedPrivateKey);
-  const encryptedBytes = new Uint8Array(encryptedData);
-  
-  // Extract the salt, IV, and encrypted private key
-  const salt = encryptedBytes.slice(0, 16);
-  const iv = encryptedBytes.slice(16, 28);
-  const ciphertext = encryptedBytes.slice(28);
-  
-  // Derive the key from the password using the same parameters
-  const encoder = new TextEncoder();
-  const passwordData = encoder.encode(password);
-  
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    passwordData,
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits", "deriveKey"]
-  );
-  
-  const key = await window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-  
-  // Decrypt the private key
-  try {
-    const decryptedData = await window.crypto.subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv
-      },
-      key,
-      ciphertext
-    );
-    
-    const decoder = new TextDecoder();
-    return decoder.decode(decryptedData);
-  } catch (err) {
-    // If decryption fails, the password was likely incorrect
-    throw new Error("Failed to decrypt private key. Incorrect password?");
-  }
+// Create a fingerprint from a public key (for display purposes)
+export function createKeyFingerprint(publicKey: string): string {
+  // Take the first 8 characters of the base64 public key and format it
+  const shortKey = publicKey.substring(0, 8).replace(/[+/=]/g, '');
+  return shortKey.match(/.{1,4}/g)?.join(':') || '';
 }

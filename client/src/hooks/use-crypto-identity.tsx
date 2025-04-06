@@ -4,7 +4,7 @@ import {
   generateKeyPair, 
   encryptPrivateKey, 
   decryptPrivateKey, 
-  signData, 
+  signMessage, 
   verifySignature,
   generateDID
 } from '@/lib/cryptography';
@@ -12,7 +12,15 @@ import {
 // TypeScript type augmentation for localStorage
 declare global {
   interface Window {
-    localStorage: Storage;
+    localStorage: {
+      getItem(key: string): string | null;
+      setItem(key: string, value: string): void;
+      removeItem(key: string): void;
+      clear(): void;
+      length: number;
+      key(index: number): string | null;
+      [key: string]: any;
+    };
   }
 }
 
@@ -129,29 +137,32 @@ export function useCryptoIdentity(): CryptoIdentity {
       const did = await generateDID(publicKey);
       
       // Encrypt the private key with the user's password
-      const encryptedPrivateKey = await encryptPrivateKey(privateKey, password);
+      const encryptedPrivateKeyObj = await encryptPrivateKey(privateKey, password);
+      
+      // Convert encrypted data to JSON string for storage
+      const encryptedPrivateKeyString = JSON.stringify(encryptedPrivateKeyObj);
       
       // Store the keys if localStorage is available
       if (typeof window !== 'undefined' && window.localStorage) {
         if (user) {
           // Save with user-specific keys
           window.localStorage.setItem(`${PUBLIC_KEY_STORAGE_KEY}_${user.id}`, publicKey);
-          window.localStorage.setItem(`${ENCRYPTED_PRIVATE_KEY_STORAGE_KEY}_${user.id}`, encryptedPrivateKey);
+          window.localStorage.setItem(`${ENCRYPTED_PRIVATE_KEY_STORAGE_KEY}_${user.id}`, encryptedPrivateKeyString);
           window.localStorage.setItem(`${DID_STORAGE_KEY}_${user.id}`, did);
         }
         
         // Also store in the generic storage for non-logged-in state
         window.localStorage.setItem(PUBLIC_KEY_STORAGE_KEY, publicKey);
-        window.localStorage.setItem(ENCRYPTED_PRIVATE_KEY_STORAGE_KEY, encryptedPrivateKey);
+        window.localStorage.setItem(ENCRYPTED_PRIVATE_KEY_STORAGE_KEY, encryptedPrivateKeyString);
         window.localStorage.setItem(DID_STORAGE_KEY, did);
       }
       
       // Update state
       setPublicKey(publicKey);
-      setEncryptedPrivateKey(encryptedPrivateKey);
+      setEncryptedPrivateKey(encryptedPrivateKeyString);
       setDid(did);
       
-      return { publicKey, did, encryptedPrivateKey };
+      return { publicKey, did, encryptedPrivateKey: encryptedPrivateKeyString };
     } finally {
       setIsGeneratingKeys(false);
     }
@@ -167,11 +178,14 @@ export function useCryptoIdentity(): CryptoIdentity {
     }
     
     try {
+      // Parse the encrypted private key string to EncryptedData object
+      const encryptedPrivateKeyObj = JSON.parse(encryptedPrivateKey) as import('@/lib/cryptography').EncryptedData;
+      
       // Decrypt the private key with the user's password
-      const privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
+      const privateKey = await decryptPrivateKey(encryptedPrivateKeyObj, password);
       
       // Sign the data
-      return await signData(privateKey, data);
+      return await signMessage(data, privateKey);
     } catch (error) {
       console.error("Error signing data:", error);
       throw error;
@@ -188,7 +202,7 @@ export function useCryptoIdentity(): CryptoIdentity {
     }
     
     try {
-      return await verifySignature(publicKey, signature, data);
+      return await verifySignature(data, signature, publicKey);
     } catch (error) {
       console.error("Error verifying data:", error);
       return false;
@@ -202,7 +216,7 @@ export function useCryptoIdentity(): CryptoIdentity {
     publicKey: string
   ): Promise<boolean> => {
     try {
-      return await verifySignature(publicKey, signature, data);
+      return await verifySignature(data, signature, publicKey);
     } catch (error) {
       console.error("Error verifying data with key:", error);
       return false;
