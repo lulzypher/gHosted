@@ -4,15 +4,43 @@ import { IPFSStats } from '@/types';
 
 // Configure IPFS connection
 let ipfs: IPFSHTTPClient | undefined;
+let isConnecting = false;
+let lastConnectionAttempt = 0;
+const RETRY_INTERVAL = 15000; // 15 seconds between retry attempts
+const CONNECTION_TIMEOUT = 15000; // 15 seconds timeout
 
 // Initialize IPFS with the local node or Infura gateway
 export const initIPFS = async (): Promise<IPFSHTTPClient> => {
   try {
+    // Prevent multiple simultaneous connection attempts and rate limit retries
+    const now = Date.now();
+    if (isConnecting) {
+      console.log('IPFS connection attempt already in progress, returning existing attempt');
+      throw new Error('IPFS connection attempt already in progress');
+    }
+    
+    if (now - lastConnectionAttempt < RETRY_INTERVAL) {
+      console.log(`Too soon to retry IPFS connection. Wait ${Math.ceil((RETRY_INTERVAL - (now - lastConnectionAttempt))/1000)} seconds`);
+      throw new Error('Too soon to retry IPFS connection');
+    }
+    
+    isConnecting = true;
+    lastConnectionAttempt = now;
+    
     console.log('Attempting to connect to IPFS...');
     
     // For browser compatibility and to avoid CORS issues, let's use Infura directly
-    const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID || 'anonymous';  // Default to anonymous access
-    const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET || 'anonymous';
+    const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
+    const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
+    
+    if (!projectId || !projectSecret) {
+      console.error('Missing IPFS project credentials');
+      isConnecting = false;
+      throw new Error('Missing IPFS project credentials. Please set the environment variables.');
+    }
+    
+    // Log that we have credentials (without revealing them)
+    console.log('IPFS project credentials found');
     
     // Use browser's btoa instead of Buffer.from for base64 encoding
     const auth = 'Basic ' + btoa(`${projectId}:${projectSecret}`);
@@ -24,17 +52,36 @@ export const initIPFS = async (): Promise<IPFSHTTPClient> => {
       protocol: 'https',
       headers: {
         authorization: auth
-      }
+      },
+      timeout: CONNECTION_TIMEOUT
     });
     
-    // Test the connection
+    // Test the connection with a timeout
     console.log('Testing IPFS connection...');
-    const version = await ipfs.version();
+    const testPromise = ipfs.version();
+    
+    // Add a timeout for the connection test
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('IPFS connection test timed out')), CONNECTION_TIMEOUT);
+    });
+    
+    const version = await Promise.race([testPromise, timeoutPromise]);
     console.log('Connected to IPFS gateway. Version:', version);
+    isConnecting = false;
     return ipfs;
   } catch (error) {
-    console.error('Failed to connect to IPFS gateway:', error);
-    throw new Error('Unable to connect to IPFS: ' + (error instanceof Error ? error.message : String(error)));
+    isConnecting = false;
+    let errorMessage = 'Unable to connect to IPFS';
+    
+    if (error instanceof Error) {
+      errorMessage += ': ' + error.message;
+      console.error('Failed to connect to IPFS gateway:', error.message);
+    } else {
+      errorMessage += ': Unknown error';
+      console.error('Failed to connect to IPFS gateway with unknown error:', error);
+    }
+    
+    throw new Error(errorMessage);
   }
 };
 

@@ -36,24 +36,58 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize IPFS on component mount
   useEffect(() => {
+    let retry = 0;
+    const maxRetries = 3;
+    
     const init = async () => {
       try {
+        console.log('Attempting to initialize IPFS connection...');
+        
+        // Verify if we have IPFS credentials in environment variables
+        const projectId = import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
+        const projectSecret = import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
+        
+        if (!projectId || !projectSecret) {
+          setIpfsError('Missing IPFS credentials. Please check your environment variables.');
+          console.error('Missing IPFS credentials. Please check environment variables.');
+          return;
+        }
+        
         const ipfsInstance = await initIPFS();
         setIpfs(ipfsInstance);
         setIsIPFSReady(true);
+        setIpfsError(null);
         
         // Get initial stats
         const initialStats = await getIPFSStats();
         setStats(initialStats);
-      } catch (error) {
-        console.error('Error initializing IPFS:', error);
-        setIpfsError('Failed to initialize IPFS. Some features may not work correctly.');
         
-        toast({
-          variant: "destructive",
-          title: "IPFS Error",
-          description: "Could not connect to IPFS. Limited functionality available.",
-        });
+        console.log('IPFS initialized successfully!');
+      } catch (error) {
+        retry += 1;
+        let errorMessage = 'Failed to initialize IPFS.';
+        
+        if (error instanceof Error) {
+          errorMessage += ' ' + error.message;
+          console.error('Error initializing IPFS:', error.message);
+        } else {
+          console.error('Error initializing IPFS:', error);
+        }
+        
+        setIpfsError(errorMessage);
+        setIsIPFSReady(false);
+        
+        // Don't show toast on every retry attempt
+        if (retry >= maxRetries) {
+          toast({
+            variant: "destructive",
+            title: "IPFS Connection Failed",
+            description: "Could not connect to IPFS. Limited functionality available.",
+          });
+        } else {
+          console.log(`Retrying IPFS connection (${retry}/${maxRetries}) in 5 seconds...`);
+          setTimeout(init, 5000);
+        }
       }
     };
 

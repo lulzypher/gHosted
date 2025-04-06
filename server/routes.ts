@@ -29,13 +29,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     path: '/api/ws',
     // Add the following options to make the connection more reliable
     clientTracking: true,
-    perMessageDeflate: false
+    perMessageDeflate: false,
+    // Allow 5 minutes for connection timeout
+    maxPayload: 50 * 1024 * 1024, // 50MB max payload
   });
   
   console.log("WebSocket server created and listening on path /api/ws");
   
+  // Heartbeat mechanism to detect and clean up dead connections
+  function heartbeat(this: WebSocket) {
+    // @ts-ignore - add a property to the WebSocket object
+    this.isAlive = true;
+  }
+  
+  // Check for dead connections every 30 seconds
+  const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      // @ts-ignore - check the custom property
+      if (ws.isAlive === false) {
+        console.log("Terminating inactive WebSocket connection");
+        return ws.terminate();
+      }
+      
+      // @ts-ignore - set the property to false, expecting heartbeat to set it to true
+      ws.isAlive = false;
+      try {
+        ws.ping();
+      } catch (e) {
+        console.error("Error sending ping:", e);
+      }
+    });
+  }, 30000);
+  
+  // Clean up the interval on server close
+  wss.on('close', () => {
+    clearInterval(interval);
+  });
+  
   wss.on("connection", (ws: WebSocket, req) => {
     console.log("WebSocket connection received:", req.url);
+    
+    // Initialize the isAlive property
+    // @ts-ignore
+    ws.isAlive = true;
+    
+    // Set up heartbeat
+    ws.on('pong', heartbeat);
+    
+    // Handle initial connection errors
+    ws.on('error', (error) => {
+      console.error("WebSocket connection error:", error);
+    });
     
     // Extract user ID from the request
     const params = new URLSearchParams(req.url?.split("?")[1] || "");
