@@ -119,17 +119,17 @@ export function RightSidebar() {
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-[#e4e6eb] font-semibold text-lg">Pinned Content</h2>
           <Link href="/pinned">
-            <a className="text-xs text-[#3499f0] hover:underline flex items-center">
+            <div className="text-xs text-[#3499f0] hover:underline flex items-center cursor-pointer">
               View All
               <ChevronRight className="h-3 w-3 ml-0.5" />
-            </a>
+            </div>
           </Link>
         </div>
         
         <div className="space-y-3">
           {pinnedContents.map((content) => (
             <Link key={content.id} href={`/content/${content.cid}`}>
-              <a className="block bg-[#242526] hover:bg-[#3a3b3c]/70 rounded-lg overflow-hidden transition-colors">
+              <div className="block bg-[#242526] hover:bg-[#3a3b3c]/70 rounded-lg overflow-hidden transition-colors cursor-pointer">
                 {content.imageCid ? (
                   <div className="aspect-video w-full overflow-hidden relative">
                     <img
@@ -162,7 +162,7 @@ export function RightSidebar() {
                     </p>
                   </div>
                 )}
-              </a>
+              </div>
             </Link>
           ))}
         </div>

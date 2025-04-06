@@ -47,16 +47,16 @@ export function LeftSidebar() {
         <nav className="space-y-1">
           {navItems.map((item) => (
             <Link key={item.path} href={item.path}>
-              <a
+              <div
                 className={`flex items-center px-3 py-2 text-sm rounded-md group transition-colors ${
                   isActive(item.path)
                     ? 'bg-[#3499f0]/10 text-[#3499f0] font-medium'
                     : 'text-[#b0b3b8] hover:bg-[#3a3b3c] hover:text-[#e4e6eb]'
-                }`}
+                } cursor-pointer`}
               >
                 <item.icon className={`h-5 w-5 mr-3 ${isActive(item.path) ? 'text-[#3499f0]' : 'text-[#b0b3b8] group-hover:text-[#e4e6eb]'}`} />
                 <span>{item.label}</span>
-              </a>
+              </div>
             </Link>
           ))}
         </nav>

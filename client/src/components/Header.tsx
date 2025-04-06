@@ -12,7 +12,11 @@ export function Header() {
         <div className="flex items-center mr-4">
           <Link href="/">
             <div className="flex items-center space-x-2 cursor-pointer">
-              <span className="text-2xl font-semibold text-[#3499f0]">gHosted</span>
+              <img 
+                src="/assets/logo.png" 
+                alt="gHosted Logo" 
+                className="h-9 w-auto"
+              />
               <span className="bg-[#3499f0]/10 text-[#3499f0] px-2 py-0.5 rounded-full text-xs font-medium">
                 Online
               </span>
