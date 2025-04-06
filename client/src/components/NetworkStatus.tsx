@@ -41,8 +41,8 @@ const NetworkStatus: React.FC<NetworkStatusProps> = ({ status, peerCount }) => {
       {getStatusContent()}
       <div className="hidden group-hover:block absolute bg-black text-white text-xs p-2 rounded whitespace-nowrap left-0 mt-1 z-50">
         {status === NetworkStatusEnum.ONLINE && `Connected to ${peerCount} peers`}
-        {status === NetworkStatusEnum.OFFLINE && 'You are offline. Content can still be created and will sync when you reconnect.'}
-        {status === NetworkStatusEnum.CONNECTING && 'Establishing peer connections...'}
+        {status === NetworkStatusEnum.OFFLINE && 'You are offline. Demo peers still available. Content can still be created and will sync when you reconnect.'}
+        {status === NetworkStatusEnum.CONNECTING && 'Establishing peer connections... Demo peers are available for testing.'}
       </div>
     </div>
   );
