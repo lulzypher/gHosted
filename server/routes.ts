@@ -133,7 +133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     wsConnections.get(userId)?.add(ws);
     
     // Handle messages from client
-    ws.on("message", (message: string) => {
+    ws.on("message", async (message: string) => {
       try {
         const data = JSON.parse(message.toString());
         console.log(`Received message from user ${userId}, connectionId ${connectionId}:`, data);
@@ -143,6 +143,192 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Mark as alive in response to server ping
           // @ts-ignore
           ws.isAlive = true;
+        } 
+        // Handle peer discovery related messages
+        else if (data.type === "register") {
+          console.log(`User ${data.userId} registering device ${data.deviceType}`);
+          // Register this connection with the user ID and device info
+          if (data.userId) {
+            const user = await storage.getUser(parseInt(data.userId));
+            if (user) {
+              // Add custom properties for tracking
+              // @ts-ignore
+              ws.userId = parseInt(data.userId);
+              // @ts-ignore
+              ws.deviceType = data.deviceType || 'unknown';
+              // @ts-ignore
+              ws.deviceName = data.deviceName || 'Unnamed Device';
+              
+              // Update connection mapping
+              if (!wsConnections.has(user.id)) {
+                wsConnections.set(user.id, new Set());
+              }
+              wsConnections.get(user.id)?.add(ws);
+              
+              // Send confirmation
+              ws.send(JSON.stringify({
+                type: 'registered',
+                userId: user.id,
+                success: true
+              }));
+            }
+          }
+        }
+        else if (data.type === "discover") {
+          console.log(`User ${data.userId} discovering peers`);
+          // Find peers on the same network but not belonging to this user
+          const peers = [];
+          
+          // Collect all connections from other users
+          for (const [otherUserId, connections] of wsConnections.entries()) {
+            if (otherUserId !== userId && otherUserId !== 0) {
+              for (const conn of connections) {
+                // Only include open connections
+                if (conn.readyState === WebSocket.OPEN) {
+                  peers.push({
+                    id: conn.connectionId,
+                    // @ts-ignore
+                    deviceType: conn.deviceType || 'unknown',
+                    // @ts-ignore
+                    deviceName: conn.deviceName || 'Unnamed Device',
+                    // @ts-ignore
+                    lastSeen: new Date()
+                  });
+                }
+              }
+            }
+          }
+          
+          // Send the peer list back to the client
+          ws.send(JSON.stringify({
+            type: 'peers',
+            peers
+          }));
+        }
+        else if (data.type === "connect") {
+          console.log(`User ${data.userId} requesting connection to peer ${data.targetPeerId}`);
+          // Find the target peer connection
+          let targetConn: WebSocket | undefined;
+          
+          // Search all connections for the target peer ID
+          for (const connections of wsConnections.values()) {
+            for (const conn of connections) {
+              // @ts-ignore
+              if (conn.connectionId === data.targetPeerId) {
+                targetConn = conn;
+                break;
+              }
+            }
+            if (targetConn) break;
+          }
+          
+          if (targetConn && targetConn.readyState === WebSocket.OPEN) {
+            // Send connection request to target peer
+            targetConn.send(JSON.stringify({
+              type: 'connectionRequest',
+              // @ts-ignore
+              fromPeerId: ws.connectionId,
+              // @ts-ignore
+              fromUserId: ws.userId,
+              // @ts-ignore
+              deviceType: ws.deviceType,
+              // @ts-ignore
+              deviceName: ws.deviceName
+            }));
+            
+            // Send confirmation to requesting peer
+            ws.send(JSON.stringify({
+              type: 'connectRequested',
+              targetPeerId: data.targetPeerId
+            }));
+          } else {
+            // Send error to requesting peer
+            ws.send(JSON.stringify({
+              type: 'connectError',
+              targetPeerId: data.targetPeerId,
+              error: 'Peer not found or not connected'
+            }));
+          }
+        }
+        else if (data.type === "disconnect") {
+          console.log(`User ${data.userId} disconnecting from peer ${data.targetPeerId}`);
+          // Find the target peer connection
+          let targetConn: WebSocket | undefined;
+          
+          // Search all connections for the target peer ID
+          for (const connections of wsConnections.values()) {
+            for (const conn of connections) {
+              // @ts-ignore
+              if (conn.connectionId === data.targetPeerId) {
+                targetConn = conn;
+                break;
+              }
+            }
+            if (targetConn) break;
+          }
+          
+          if (targetConn && targetConn.readyState === WebSocket.OPEN) {
+            // Send disconnect notification to target peer
+            targetConn.send(JSON.stringify({
+              type: 'peerDisconnected',
+              // @ts-ignore
+              peerId: ws.connectionId
+            }));
+            
+            // Send confirmation to requesting peer
+            ws.send(JSON.stringify({
+              type: 'disconnectSuccess',
+              targetPeerId: data.targetPeerId
+            }));
+          }
+        }
+        else if (data.type === "data") {
+          // Forward data to target peer
+          let targetConn: WebSocket | undefined;
+          
+          // Search all connections for the target peer ID
+          for (const connections of wsConnections.values()) {
+            for (const conn of connections) {
+              // @ts-ignore
+              if (conn.connectionId === data.targetPeerId) {
+                targetConn = conn;
+                break;
+              }
+            }
+            if (targetConn) break;
+          }
+          
+          if (targetConn && targetConn.readyState === WebSocket.OPEN) {
+            // Forward the data
+            targetConn.send(JSON.stringify({
+              type: 'peerData',
+              // @ts-ignore
+              fromPeerId: ws.connectionId,
+              data: data.data
+            }));
+          }
+        }
+        else if (data.type === "broadcast") {
+          // Broadcast data to all connected peers
+          const message = JSON.stringify({
+            type: 'peerBroadcast',
+            // @ts-ignore
+            fromPeerId: ws.connectionId,
+            // @ts-ignore
+            fromUserId: ws.userId,
+            data: data.data
+          });
+          
+          // Send to all connections except sender's
+          for (const [otherUserId, connections] of wsConnections.entries()) {
+            if (otherUserId !== userId && otherUserId !== 0) {
+              for (const conn of connections) {
+                if (conn !== ws && conn.readyState === WebSocket.OPEN) {
+                  conn.send(message);
+                }
+              }
+            }
+          }
         }
       } catch (error) {
         console.error("Error processing incoming message:", error);

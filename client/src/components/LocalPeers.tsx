@@ -1,222 +1,211 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { usePeerDiscovery } from "@/contexts/PeerDiscoveryContext";
-import { LocalPeer } from "@/contexts/PeerDiscoveryContext";
+import React, { useState } from 'react';
+import { usePeerDiscovery } from '@/contexts/PeerDiscoveryContext';
+import { Smartphone, Laptop, Cloud, RefreshCw, AlertCircle, Loader2, Link as LinkIcon, Link2Off as LinkBroken, Clock, CircleCheck } from 'lucide-react';
 
-import { 
-  Wifi, 
-  WifiOff, 
-  Link,
-  Link2Off, 
-  Loader2, 
-  RefreshCw,
-  Smartphone,
-  Laptop,
-  Tablet,
-  MoreHorizontal
-} from "lucide-react";
+export interface LocalPeer {
+  id: string;
+  displayName?: string;
+  deviceType?: 'pc' | 'mobile' | 'server' | 'unknown';
+  status: 'discovered' | 'connecting' | 'connected' | 'disconnected';
+  lastSeen: Date;
+}
 
-const LocalPeers: React.FC = () => {
-  const { toast } = useToast();
+export function LocalPeers() {
   const { 
-    localPeers,
-    isDiscovering,
-    connectionStatus,
-    startDiscovery,
-    stopDiscovery,
-    connectToPeer,
-    disconnectFromPeer
+    localPeers, 
+    isDiscovering, 
+    startDiscovery, 
+    connectToPeer, 
+    disconnectFromPeer 
   } = usePeerDiscovery();
-
-  // Format the lastSeen date
+  
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    startDiscovery();
+    
+    // Reset refreshing status after a timeout
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 3000);
+  };
+  
   const formatLastSeen = (date: Date): string => {
     const now = new Date();
-    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return date.toLocaleDateString();
+    if (diffInSeconds < 60) {
+      return 'Just now';
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
+      return `${minutes} min${minutes > 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
   };
-
-  // Get status badge
+  
   const getStatusBadge = (peer: LocalPeer) => {
-    switch(peer.status) {
+    switch (peer.status) {
       case 'connected':
-        return <Badge variant="outline" className="bg-green-500 text-white">Connected</Badge>;
+        return (
+          <div className="px-2 py-0.5 rounded-full text-xs bg-green-900/30 text-green-400 border border-green-900/50">
+            <div className="flex items-center space-x-1">
+              <CircleCheck className="h-3 w-3" />
+              <span>Connected</span>
+            </div>
+          </div>
+        );
       case 'connecting':
-        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Connecting...</Badge>;
+        return (
+          <div className="px-2 py-0.5 rounded-full text-xs bg-amber-900/30 text-amber-400 border border-amber-900/50">
+            <div className="flex items-center space-x-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Connecting</span>
+            </div>
+          </div>
+        );
       case 'disconnected':
-        return <Badge variant="outline" className="bg-red-100 text-red-800">Disconnected</Badge>;
+        return (
+          <div className="px-2 py-0.5 rounded-full text-xs bg-red-900/30 text-red-400 border border-red-900/50">
+            <div className="flex items-center space-x-1">
+              <AlertCircle className="h-3 w-3" />
+              <span>Disconnected</span>
+            </div>
+          </div>
+        );
       default:
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800">Discovered</Badge>;
+        return (
+          <div className="px-2 py-0.5 rounded-full text-xs bg-[#3a3b3c] text-[#b0b3b8] border border-[#4e4f50]">
+            <div className="flex items-center space-x-1">
+              <span>Discovered</span>
+            </div>
+          </div>
+        );
     }
   };
-
-  // Handle connection toggle
-  const handleConnectionToggle = async (peer: LocalPeer) => {
-    if (peer.status === 'connected' || peer.status === 'connecting') {
-      disconnectFromPeer(peer.id);
-      toast({
-        title: "Disconnected",
-        description: `Disconnected from peer ${peer.displayName || peer.id.substring(0, 8)}`,
-      });
-    } else {
-      try {
-        const success = await connectToPeer(peer.id);
-        if (success) {
-          toast({
-            title: "Connected",
-            description: `Connected to peer ${peer.displayName || peer.id.substring(0, 8)}`,
-          });
-        } else {
-          toast({
-            title: "Connection failed",
-            description: "Unable to establish connection with peer",
-            variant: "destructive"
-          });
-        }
-      } catch (error) {
-        console.error("Connection error:", error);
-        toast({
-          title: "Connection error",
-          description: "An error occurred while connecting",
-          variant: "destructive"
-        });
-      }
-    }
-  };
-
-  // Device type icon
+  
   const getDeviceIcon = (peer: LocalPeer) => {
-    const deviceType = peer.deviceType || 'unknown';
-    
-    if (deviceType.includes('mobile') || deviceType.includes('phone')) {
-      return <Smartphone className="mr-2" size={16} />;
-    } else if (deviceType.includes('tablet')) {
-      return <Tablet className="mr-2" size={16} />;
-    } else {
-      return <Laptop className="mr-2" size={16} />;
+    switch (peer.deviceType) {
+      case 'mobile':
+        return <Smartphone className="h-5 w-5 text-[#b0b3b8]" />;
+      case 'pc':
+        return <Laptop className="h-5 w-5 text-[#b0b3b8]" />;
+      case 'server':
+        return <Cloud className="h-5 w-5 text-[#b0b3b8]" />;
+      default:
+        return <Laptop className="h-5 w-5 text-[#b0b3b8]" />;
     }
   };
-
-  // Get connection button
+  
   const getConnectionButton = (peer: LocalPeer) => {
-    if (peer.status === 'connecting') {
-      return (
-        <Button variant="outline" size="sm" disabled>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Connecting
-        </Button>
-      );
-    } else if (peer.status === 'connected') {
-      return (
-        <Button variant="outline" size="sm" onClick={() => handleConnectionToggle(peer)} className="text-red-500 hover:text-red-700">
-          <Link2Off className="mr-2 h-4 w-4" />
-          Disconnect
-        </Button>
-      );
-    } else {
-      return (
-        <Button variant="outline" size="sm" onClick={() => handleConnectionToggle(peer)}>
-          <Link className="mr-2 h-4 w-4" />
-          Connect
-        </Button>
-      );
+    switch (peer.status) {
+      case 'connected':
+        return (
+          <button
+            onClick={() => disconnectFromPeer(peer.id)}
+            className="p-1.5 bg-red-900/20 hover:bg-red-900/30 text-red-400 rounded border border-red-900/30"
+            title="Disconnect"
+          >
+            <LinkBroken className="h-4 w-4" />
+          </button>
+        );
+      case 'connecting':
+        return (
+          <button
+            disabled
+            className="p-1.5 bg-[#3a3b3c] text-[#b0b3b8] rounded border border-[#4e4f50] opacity-50 cursor-not-allowed"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </button>
+        );
+      default:
+        return (
+          <button
+            onClick={async () => {
+              await connectToPeer(peer.id);
+            }}
+            className="p-1.5 bg-[#3499f0]/10 hover:bg-[#3499f0]/20 text-[#3499f0] rounded border border-[#3499f0]/20"
+            title="Connect"
+          >
+            <LinkIcon className="h-4 w-4" />
+          </button>
+        );
     }
   };
-
+  
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-xl">Local Peers</CardTitle>
-          <div className="flex space-x-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={isDiscovering ? stopDiscovery : startDiscovery}
-              className={isDiscovering ? "text-blue-500" : ""}
-            >
-              {isDiscovering ? <WifiOff className="h-4 w-4 mr-1" /> : <Wifi className="h-4 w-4 mr-1" />}
-              {isDiscovering ? "Stop" : "Discover"}
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={startDiscovery}
-              disabled={isDiscovering}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+    <div className="p-4 bg-[#242526] rounded-lg border border-[#3a3b3c]">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[#e4e6eb] font-medium">Nearby Devices</h3>
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing || isDiscovering}
+          className="p-1.5 text-[#b0b3b8] hover:text-[#e4e6eb] hover:bg-[#3a3b3c] rounded-full disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing || isDiscovering ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+      
+      {isDiscovering && !isRefreshing && (
+        <div className="flex items-center justify-center py-4">
+          <div className="flex flex-col items-center">
+            <Loader2 className="h-8 w-8 text-[#3499f0] animate-spin mb-2" />
+            <p className="text-sm text-[#b0b3b8]">Scanning for nearby peers...</p>
           </div>
         </div>
-        <CardDescription>
-          {connectionStatus === 'initializing' ? 'Initializing discovery...' :
-           connectionStatus === 'error' ? 'Discovery error. Check connection.' :
-           connectionStatus === 'disconnected' ? 'Discovery service disconnected' :
-           isDiscovering ? 'Actively discovering peers on local network' : 'Peer discovery paused'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {localPeers.length === 0 ? (
-          <div className="text-center py-6 text-gray-500">
-            <WifiOff className="mx-auto h-8 w-8 mb-2 opacity-50" />
-            <p>No peers discovered on your local network</p>
-            <p className="text-sm mt-1">
-              {isDiscovering ? 
-                "We're looking for peers..." : 
-                "Click Discover to find peers on your network"}
-            </p>
+      )}
+      
+      {localPeers.length === 0 && !isDiscovering && (
+        <div className="text-center py-6 text-[#b0b3b8]">
+          <div className="flex flex-col items-center">
+            <AlertCircle className="h-10 w-10 text-[#b0b3b8] mb-2 opacity-50" />
+            <p className="mb-2">No devices found nearby</p>
+            <button
+              onClick={handleRefresh}
+              className="text-sm text-[#3499f0] hover:text-[#3499f0]/80 flex items-center"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Scan again
+            </button>
           </div>
-        ) : (
-          <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-            {localPeers.map((peer) => (
-              <div 
-                key={peer.id} 
-                className="border rounded-md p-3 flex flex-col space-y-2"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center">
-                    {getDeviceIcon(peer)}
-                    <div>
-                      <h4 className="font-medium text-sm">
-                        {peer.displayName || `Peer ${peer.id.substring(0, 8)}...`}
-                      </h4>
-                      <p className="text-xs text-gray-500">Last seen: {formatLastSeen(peer.lastSeen)}</p>
-                    </div>
-                  </div>
-                  {getStatusBadge(peer)}
+        </div>
+      )}
+      
+      {localPeers.length > 0 && (
+        <div className="space-y-3">
+          {localPeers.map((peer) => (
+            <div 
+              key={peer.id} 
+              className="flex items-center justify-between p-3 bg-[#18191a] rounded border border-[#3a3b3c]"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  {getDeviceIcon(peer)}
                 </div>
-                <div className="flex justify-between items-center">
-                  {getConnectionButton(peer)}
-                  <Button variant="ghost" size="sm">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+                <div>
+                  <div className="font-medium text-[#e4e6eb]">
+                    {peer.displayName || peer.id.substring(0, 8)}
+                  </div>
+                  <div className="flex items-center text-xs text-[#b0b3b8] space-x-2">
+                    <div className="flex items-center">
+                      <Clock className="h-3 w-3 mr-1 opacity-70" />
+                      <span>{formatLastSeen(peer.lastSeen)}</span>
+                    </div>
+                    {getStatusBadge(peer)}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-      <CardFooter className="text-xs text-gray-500 justify-between border-t pt-3">
-        <span>{localPeers.length} {localPeers.length === 1 ? 'peer' : 'peers'} discovered</span>
-        <span>
-          {localPeers.filter(p => p.status === 'connected').length} connected
-        </span>
-      </CardFooter>
-    </Card>
+              <div>
+                {getConnectionButton(peer)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
-};
-
-export default LocalPeers;
+}

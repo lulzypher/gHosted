@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { ProtectedRoute } from '@/lib/protected-route';
 import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
+import { PeerDiscoveryProvider } from '@/contexts/PeerDiscoveryContext';
 import HomePageContent from '@/pages/home-page';
 
 // Landing page for unauthenticated users
@@ -308,13 +309,15 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Switch>
-          <ProtectedRoute path="/" component={HomePage} />
-          <Route path="/auth" component={AuthPage} />
-          <Route path="/about" component={AboutPage} />
-          <Route component={NotFoundPage} />
-        </Switch>
-        <Toaster />
+        <PeerDiscoveryProvider>
+          <Switch>
+            <ProtectedRoute path="/" component={HomePage} />
+            <Route path="/auth" component={AuthPage} />
+            <Route path="/about" component={AboutPage} />
+            <Route component={NotFoundPage} />
+          </Switch>
+          <Toaster />
+        </PeerDiscoveryProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -1,101 +1,97 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { usePeerDiscovery } from '@/contexts/PeerDiscoveryContext';
+import { RefreshCw, Wifi, WifiOff, Clock } from 'lucide-react';
 
 interface WebSocketStatusProps {
   showReconnect?: boolean;
 }
 
 export function WebSocketStatus({ showReconnect = true }: WebSocketStatusProps) {
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const { connectionStatus, startDiscovery } = usePeerDiscovery();
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [reconnecting, setReconnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   
+  // Update the last updated timestamp when connection status changes
   useEffect(() => {
-    // Simulate a WebSocket connection
-    setWsStatus('connected');
     setLastUpdated(new Date());
-    
-    // In a real app, this would come from actual WebSocket events
-    const intervalId = setInterval(() => {
-      setLastUpdated(new Date());
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, []);
+  }, [connectionStatus]);
   
   const handleReconnect = () => {
-    setReconnecting(true);
-    setWsStatus('connecting');
-    
-    // Simulate a reconnection attempt
+    setIsReconnecting(true);
+    // Attempt to restart discovery process
+    startDiscovery();
+    // For development, simulate reconnection
     setTimeout(() => {
-      setWsStatus('connected');
-      setLastUpdated(new Date());
-      setReconnecting(false);
+      setIsReconnecting(false);
     }, 2000);
   };
   
   const formatLastUpdated = (date: Date) => {
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    
-    if (seconds < 60) {
-      return `${seconds} sec${seconds !== 1 ? 's' : ''} ago`;
-    }
-    
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) {
-      return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
-    }
-    
-    const hours = Math.floor(minutes / 60);
-    return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   
+  let statusText = '';
+  let statusColor = '';
+  let statusIcon = null;
+  
+  switch (connectionStatus) {
+    case 'ready':
+      statusText = 'Connected';
+      statusColor = 'text-green-400';
+      statusIcon = <Wifi className="h-4 w-4" />;
+      break;
+    case 'initializing':
+      statusText = 'Connecting';
+      statusColor = 'text-amber-400';
+      statusIcon = <RefreshCw className="h-4 w-4 animate-spin" />;
+      break;
+    case 'error':
+      statusText = 'Connection Error';
+      statusColor = 'text-red-400';
+      statusIcon = <WifiOff className="h-4 w-4" />;
+      break;
+    case 'disconnected':
+      statusText = 'Disconnected';
+      statusColor = 'text-red-400';
+      statusIcon = <WifiOff className="h-4 w-4" />;
+      break;
+    default:
+      statusText = 'Offline';
+      statusColor = 'text-[#b0b3b8]';
+      statusIcon = <WifiOff className="h-4 w-4" />;
+  }
+  
   return (
-    <div className="flex items-center">
-      {wsStatus === 'connected' && (
-        <CheckCircle2 
-          className="h-4 w-4 text-green-500 mr-1.5" 
-          aria-hidden="true" 
-        />
-      )}
+    <div className="p-3 bg-[#242526] rounded-lg border border-[#3a3b3c]">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center space-x-2">
+          <span className={`${statusColor}`}>
+            {statusIcon}
+          </span>
+          <span className="text-sm font-medium text-[#e4e6eb]">WebSocket Status</span>
+        </div>
+        <div className="flex items-center text-xs text-[#b0b3b8]">
+          <Clock className="h-3.5 w-3.5 mr-1" />
+          Updated at {formatLastUpdated(lastUpdated)}
+        </div>
+      </div>
       
-      {wsStatus === 'connecting' && (
-        <RefreshCw 
-          className="h-4 w-4 text-amber-500 mr-1.5 animate-spin" 
-          aria-hidden="true" 
-        />
-      )}
-      
-      {wsStatus === 'disconnected' && (
-        <AlertCircle 
-          className="h-4 w-4 text-red-500 mr-1.5" 
-          aria-hidden="true" 
-        />
-      )}
-      
-      <span className="text-xs text-muted-foreground">
-        {wsStatus === 'connected' && `Synced ${formatLastUpdated(lastUpdated)}`}
-        {wsStatus === 'connecting' && 'Connecting...'}
-        {wsStatus === 'disconnected' && 'Disconnected'}
-      </span>
-      
-      {showReconnect && wsStatus !== 'connecting' && (
-        <button
-          onClick={handleReconnect}
-          disabled={reconnecting}
-          className="ml-2 text-xs text-primary hover:text-primary/80 disabled:text-muted-foreground disabled:cursor-not-allowed"
-        >
-          {reconnecting ? (
-            <span className="flex items-center">
-              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-              Reconnecting...
-            </span>
-          ) : (
-            'Reconnect'
-          )}
-        </button>
-      )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <span className={`text-sm ${statusColor}`}>{statusText}</span>
+        </div>
+        
+        {showReconnect && (connectionStatus === 'error' || connectionStatus === 'disconnected') && (
+          <button 
+            onClick={handleReconnect}
+            disabled={isReconnecting}
+            className="text-xs flex items-center px-2 py-1 rounded bg-[#3499f0] text-white hover:bg-[#3499f0]/90 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isReconnecting ? 'animate-spin' : ''}`} />
+            {isReconnecting ? 'Reconnecting...' : 'Reconnect'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
