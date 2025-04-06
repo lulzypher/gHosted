@@ -3,15 +3,20 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
   insertUserSchema, 
-  insertPostSchema, 
-  insertDeviceSchema, 
-  insertPinnedContentSchema,
-  insertPeerConnectionSchema
+  insertContentSchema, 
+  insertNodeSchema, 
+  insertPinSchema,
+  insertNodeConnectionSchema,
+  contentTypeEnum,
+  pinTypeEnum,
+  nodeRoleEnum,
+  nodeStatusEnum
 } from "@shared/schema";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { setupPeerServer, getPeersOnSameNetwork, connectedPeers } from "./peerServer";
+import { setupAuth } from "./auth";
 
 // Helper utility for generating random IDs
 function randomId(): string {
@@ -23,6 +28,9 @@ const wsConnections = new Map<number, Set<WebSocket>>();
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Setup authentication
+  setupAuth(app);
   
   // Setup PeerJS server for peer discovery and WebRTC signaling
   setupPeerServer(app, httpServer);
@@ -164,65 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
-  // AUTH ROUTES
-  
-  // Register user
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
-    try {
-      const userData = insertUserSchema.parse(req.body);
-      
-      // Check if username already exists
-      const existingUser = await storage.getUserByUsername(userData.username);
-      if (existingUser) {
-        return res.status(400).json({ message: "Username already taken" });
-      }
-      
-      // Check if DID already exists
-      const existingDID = await storage.getUserByDID(userData.did);
-      if (existingDID) {
-        return res.status(400).json({ message: "DID already registered" });
-      }
-      
-      const user = await storage.createUser(userData);
-      res.status(201).json({ 
-        id: user.id, 
-        username: user.username, 
-        displayName: user.displayName,
-        did: user.did
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: fromZodError(error).message });
-      }
-      res.status(500).json({ message: "Server error during registration" });
-    }
-  });
-  
-  // Login user
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
-    try {
-      const { username, password } = req.body;
-      
-      if (!username || !password) {
-        return res.status(400).json({ message: "Username and password required" });
-      }
-      
-      const user = await storage.getUserByUsername(username);
-      
-      if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-      
-      res.status(200).json({ 
-        id: user.id, 
-        username: user.username, 
-        displayName: user.displayName,
-        did: user.did
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Server error during login" });
-    }
-  });
+  // AUTH ROUTES are now handled by setupAuth(app)
   
   // USER ROUTES
   
