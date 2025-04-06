@@ -43,6 +43,7 @@ export interface IPFSStats {
   peersConnected: number;
   totalSize?: number; // Added for compatibility with existing code
   pinnedCount?: number; // Count of pinned contents
+  numPins?: number; // Number of pinned items (alias for pinnedCount)
   allocatedSize?: number; // Total allocated storage size
 }
 

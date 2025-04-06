@@ -157,6 +157,7 @@ export const getIPFSStats = async (): Promise<IPFSStats> => {
     
     return {
       pinnedCount,
+      numPins: pinnedCount, // Add numPins alias for pinnedCount for diagnostic tool
       repoSize: parseInt(repoStats.repoSize.toString()),
       totalSize: parseInt(repoStats.repoSize.toString()),
       numObjects: parseInt(repoStats.numObjects.toString()),
@@ -169,6 +170,7 @@ export const getIPFSStats = async (): Promise<IPFSStats> => {
     // Return default stats on error
     return {
       pinnedCount: 0,
+      numPins: 0,
       repoSize: 0,
       totalSize: 0,
       numObjects: 0,

@@ -162,6 +162,14 @@ const Header: React.FC = () => {
                   <DropdownMenuItem asChild>
                     <Link href="/settings" className="w-full cursor-pointer">Settings</Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/diagnostics" className="w-full cursor-pointer">
+                      <div className="flex items-center">
+                        <Activity className="mr-2 h-4 w-4" />
+                        <span>Network Diagnostics</span>
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="text-red-500 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />

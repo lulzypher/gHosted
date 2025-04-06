@@ -1,9 +1,14 @@
 import React from 'react';
-import { Cable, Clock, WifiOff } from 'lucide-react';
+import { Cable, Clock, WifiOff, RefreshCw } from 'lucide-react';
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { Button } from '@/components/ui/button';
 
-const WebSocketStatus: React.FC = () => {
-  const { isConnected, lastActivity } = useWebSocket();
+interface WebSocketStatusProps {
+  showReconnect?: boolean;
+}
+
+const WebSocketStatus: React.FC<WebSocketStatusProps> = ({ showReconnect = false }) => {
+  const { isConnected, lastActivity, reconnect } = useWebSocket();
 
   // Format the last activity time
   const formatLastActivity = () => {
@@ -31,17 +36,31 @@ const WebSocketStatus: React.FC = () => {
 
   return (
     <div className="relative group">
-      {isConnected ? (
-        <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-status-synced text-xs rounded-full">
-          <Cable className="h-3 w-3" />
-          <span>Connected</span>
-        </div>
-      ) : (
-        <div className="flex items-center space-x-1 px-2 py-1 bg-red-100 text-status-error text-xs rounded-full">
-          <WifiOff className="h-3 w-3" />
-          <span>Disconnected</span>
-        </div>
-      )}
+      <div className="flex items-center space-x-2">
+        {isConnected ? (
+          <div className="flex items-center space-x-1 px-2 py-1 bg-green-100 text-status-synced text-xs rounded-full">
+            <Cable className="h-3 w-3" />
+            <span>Connected</span>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-1 px-2 py-1 bg-red-100 text-status-error text-xs rounded-full">
+            <WifiOff className="h-3 w-3" />
+            <span>Disconnected</span>
+          </div>
+        )}
+        
+        {showReconnect && !isConnected && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-6 text-xs px-2 py-0"
+            onClick={() => reconnect()}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Reconnect
+          </Button>
+        )}
+      </div>
       
       <div className="hidden group-hover:block absolute bg-black text-white text-xs p-2 rounded whitespace-nowrap left-0 mt-1 z-50">
         {isConnected ? (
@@ -55,7 +74,7 @@ const WebSocketStatus: React.FC = () => {
             )}
           </div>
         ) : (
-          <span>Real-time updates disabled. You may miss new content.</span>
+          <span>Real-time updates disabled. You may miss new content. Use the diagnostic tool to check your connection.</span>
         )}
       </div>
     </div>

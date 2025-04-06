@@ -19,6 +19,7 @@ import NetworkStatus from '@/components/NetworkStatus';
 import LoginPage from '@/pages/login';
 import RegisterPage from '@/pages/register';
 import NotFoundPage from '@/pages/not-found';
+import DiagnosticsPage from '@/pages/diagnostics';
 
 // Import query client
 import { queryClient } from '@/lib/queryClient';
@@ -177,9 +178,11 @@ function App() {
                     <Suspense fallback={<Loading />}>
                       <Switch>
                         <Route path="/" component={HomePage} />
+                        <Route path="/home" component={HomePage} />
                         <Route path="/login" component={LoginPage} />
                         <Route path="/register" component={RegisterPage} />
                         <Route path="/profile/:id?" component={ProfilePage} />
+                        <Route path="/diagnostics" component={DiagnosticsPage} />
                         <Route component={NotFoundPage} />
                       </Switch>
                     </Suspense>
