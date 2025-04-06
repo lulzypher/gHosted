@@ -1,0 +1,44 @@
+{
+  "name": "gHosted",
+  "short_name": "gHosted",
+  "description": "Decentralized social media app using IPFS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "https://cdn.jsdelivr.net/npm/remixicon@2.5.0/icons/Logos/ghost-line.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/npm/remixicon@2.5.0/icons/Logos/ghost-line.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Home",
+      "short_name": "Home",
+      "description": "View your feed",
+      "url": "/"
+    },
+    {
+      "name": "Profile",
+      "short_name": "Profile",
+      "description": "View your profile",
+      "url": "/profile"
+    },
+    {
+      "name": "Storage",
+      "short_name": "Storage",
+      "description": "Manage pinned content",
+      "url": "/storage"
+    }
+  ],
+  "categories": ["social", "p2p", "decentralized"],
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
