@@ -626,6 +626,30 @@ export const PeerDiscoveryProvider: React.FC<{ children: ReactNode }> = ({ child
     if (user && !peer) {
       console.log('Initializing peer network - IPFS ready:', isIPFSReady);
       initializePeer();
+      
+      // Add demo peers immediately anyway
+      console.log('Adding initial demo peers for testing...');
+      setTimeout(() => {
+        setLocalPeers(prev => {
+          const updatedPeers = [...prev];
+          
+          // Add demo peers with different device types for testing
+          const demoPeers = [
+            { id: 'demo-tablet-peer-1', displayName: 'Demo Tablet', deviceType: 'tablet', status: 'discovered' as const, lastSeen: new Date() },
+            { id: 'demo-laptop-peer-1', displayName: 'Demo Laptop', deviceType: 'desktop', status: 'discovered' as const, lastSeen: new Date() },
+            { id: 'demo-phone-peer-1', displayName: 'Demo Phone', deviceType: 'mobile', status: 'discovered' as const, lastSeen: new Date() }
+          ];
+          
+          // Add each demo peer if not already present
+          demoPeers.forEach(demoPeer => {
+            if (!updatedPeers.some(p => p.id === demoPeer.id)) {
+              updatedPeers.push(demoPeer);
+            }
+          });
+          
+          return updatedPeers;
+        });
+      }, 500);
     }
   }, [user, peer, initializePeer]);
   

@@ -26,29 +26,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Use a specific path to avoid conflicts with Vite's WebSocket
   const wss = new WebSocketServer({ 
     server: httpServer,
-    path: '/api/ws'
+    path: '/api/ws',
+    // Add the following options to make the connection more reliable
+    clientTracking: true,
+    perMessageDeflate: false
   });
   
+  console.log("WebSocket server created and listening on path /api/ws");
+  
   wss.on("connection", (ws: WebSocket, req) => {
+    console.log("WebSocket connection received:", req.url);
+    
     // Extract user ID from the request
     const params = new URLSearchParams(req.url?.split("?")[1] || "");
     const userId = parseInt(params.get("userId") || "0");
     
-    if (userId) {
-      // Store the connection
-      if (!wsConnections.has(userId)) {
-        wsConnections.set(userId, new Set());
-      }
-      wsConnections.get(userId)?.add(ws);
-      
-      // Handle connection close using the event listener
-      ws.addEventListener("close", () => {
-        wsConnections.get(userId)?.delete(ws);
-        if (wsConnections.get(userId)?.size === 0) {
-          wsConnections.delete(userId);
-        }
-      });
+    console.log("WebSocket connection for user:", userId);
+    
+    // Send an immediate welcome message to confirm connection
+    try {
+      ws.send(JSON.stringify({
+        type: "CONNECTED",
+        message: "Connected to websocket server",
+        timestamp: new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error("Error sending welcome message:", error);
     }
+    
+    // Add user connection even if userId is 0 (anonymous)
+    if (!wsConnections.has(userId)) {
+      wsConnections.set(userId, new Set());
+    }
+    wsConnections.get(userId)?.add(ws);
+    
+    // Handle connection close
+    ws.on("close", () => {
+      console.log("WebSocket closed for user:", userId);
+      wsConnections.get(userId)?.delete(ws);
+      if (wsConnections.get(userId)?.size === 0) {
+        wsConnections.delete(userId);
+      }
+    });
   });
   
   // Helper to broadcast to a user's connections
