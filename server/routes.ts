@@ -556,6 +556,240 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // WEBSITE HOSTING ROUTES
+  
+  // Get website hosting status for the current user
+  app.get("/api/website-hosting", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const userId = req.user!.id;
+      
+      // Get user's nodes
+      const userNodes = await storage.getNodesByUser(userId);
+      
+      // Get all website nodes (nodes actively hosting the website)
+      const websiteNodes = await storage.getWebsiteNodes();
+      
+      // Get active hosting records
+      const activeHostings = await storage.getActiveWebsiteHostings();
+      
+      // Map nodes to their hosting records
+      const activeHostingNodes = activeHostings.map(hosting => {
+        const node = websiteNodes.find(n => n.id === hosting.nodeId);
+        if (!node) return null;
+        
+        return {
+          id: node.id,
+          name: node.name,
+          role: node.role,
+          domain: hosting.domain,
+          health: hosting.health,
+          status: node.status,
+          uptime: Math.floor((Date.now() - new Date(hosting.startTime).getTime()) / 1000),
+          startTime: hosting.startTime,
+          endTime: hosting.endTime,
+          stats: hosting.stats || {
+            requestsServed: 0,
+            bandwidth: 0,
+            uptime: 0,
+            latency: 0
+          }
+        };
+      }).filter(Boolean);
+      
+      // Calculate network stats
+      const totalNodes = websiteNodes.length;
+      const activeHosts = activeHostings.length;
+      const totalUptime = activeHostings.reduce((sum, hosting) => {
+        const startTime = new Date(hosting.startTime).getTime();
+        const endTime = hosting.endTime ? new Date(hosting.endTime).getTime() : Date.now();
+        const hoursUp = (endTime - startTime) / (1000 * 60 * 60);
+        return sum + hoursUp;
+      }, 0);
+      
+      // Calculate redundancy factor (how many copies of the site are available)
+      const redundancyFactor = activeHosts / Math.max(1, totalNodes);
+      
+      // Calculate health score (avg of all hosting health)
+      const healthScore = activeHostings.length > 0
+        ? Math.floor(activeHostings.reduce((sum, h) => sum + h.health, 0) / activeHostings.length)
+        : 0;
+      
+      // Filter out nodes that are already hosting
+      const eligibleNodes = userNodes
+        .filter(node => !node.isHostingWebsite)
+        .map(node => ({
+          id: node.id,
+          name: node.name,
+          role: node.role,
+          status: node.status
+        }));
+      
+      res.status(200).json({
+        isHosting: userNodes.some(node => node.isHostingWebsite),
+        eligibleNodes,
+        activeHostingNodes,
+        networkStats: {
+          totalNodes,
+          activeHosts,
+          totalUptime,
+          redundancyFactor,
+          healthScore
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching website hosting status:", error);
+      res.status(500).json({ message: "Server error fetching website hosting status" });
+    }
+  });
+  
+  // Start hosting the website
+  app.post("/api/website-hosting/start", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const { nodeId } = req.body;
+      if (!nodeId) {
+        return res.status(400).json({ message: "nodeId is required" });
+      }
+      
+      // Check if the node belongs to the user
+      const node = await storage.getNode(nodeId);
+      if (!node || node.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Node not found or not owned by you" });
+      }
+      
+      // Generate a domain name for this node
+      const domain = `${node.nodeId.substring(0, 8)}.ghosted.u`;
+      
+      // Create hosting record
+      const hosting = await storage.createWebsiteHosting({
+        nodeId,
+        domain,
+        health: 100,
+        stats: {
+          requestsServed: 0,
+          bandwidth: 0,
+          uptime: 100,
+          latency: 0
+        }
+      });
+      
+      // Update node status
+      await storage.updateNodeStatus(nodeId, 'online');
+      
+      // Update the isHostingWebsite flag on the node
+      const updatedNode = await storage.getNode(nodeId);
+      
+      // Broadcast to all users that a new hosting node is available
+      for (const [userId, connections] of wsConnections.entries()) {
+        connections.forEach(ws => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'WEBSITE_HOSTING_CHANGED',
+              nodeId,
+              hosting: true,
+              domain
+            }));
+          }
+        });
+      }
+      
+      res.status(200).json({ 
+        success: true, 
+        message: "Website hosting started", 
+        hosting,
+        node: updatedNode 
+      });
+    } catch (error) {
+      console.error("Error starting website hosting:", error);
+      res.status(500).json({ message: "Server error starting website hosting" });
+    }
+  });
+  
+  // Stop hosting the website
+  app.post("/api/website-hosting/stop", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const { nodeId } = req.body;
+      if (!nodeId) {
+        return res.status(400).json({ message: "nodeId is required" });
+      }
+      
+      // Check if the node belongs to the user
+      const node = await storage.getNode(nodeId);
+      if (!node || node.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Node not found or not owned by you" });
+      }
+      
+      // Find active hosting record for this node
+      const activeHostings = await storage.getActiveWebsiteHostings();
+      const hosting = activeHostings.find(h => h.nodeId === nodeId);
+      
+      if (hosting) {
+        // End the hosting
+        await storage.endWebsiteHosting(hosting.id);
+      }
+      
+      // Update the isHostingWebsite flag on the node
+      const updatedNode = await storage.getNode(nodeId);
+      
+      // Broadcast to all users that this hosting node is no longer available
+      for (const [userId, connections] of wsConnections.entries()) {
+        connections.forEach(ws => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'WEBSITE_HOSTING_CHANGED',
+              nodeId,
+              hosting: false
+            }));
+          }
+        });
+      }
+      
+      res.status(200).json({ 
+        success: true, 
+        message: "Website hosting stopped", 
+        node: updatedNode 
+      });
+    } catch (error) {
+      console.error("Error stopping website hosting:", error);
+      res.status(500).json({ message: "Server error stopping website hosting" });
+    }
+  });
+  
+  // Update hosting health (used by health check system)
+  app.post("/api/website-hosting/:id/health", async (req: Request, res: Response) => {
+    try {
+      const hostingId = parseInt(req.params.id);
+      const { health, stats } = req.body;
+      
+      if (health === undefined) {
+        return res.status(400).json({ message: "health is required" });
+      }
+      
+      // Update hosting health
+      const updatedHosting = await storage.updateWebsiteHostingHealth(hostingId, health);
+      
+      res.status(200).json({
+        success: true,
+        message: "Hosting health updated",
+        hosting: updatedHosting
+      });
+    } catch (error) {
+      console.error("Error updating hosting health:", error);
+      res.status(500).json({ message: "Server error updating hosting health" });
+    }
+  });
+
   // PEER CONNECTION ROUTES
   
   // Register a peer connection

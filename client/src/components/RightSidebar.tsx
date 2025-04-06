@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'wouter';
 import { Info, ChevronRight } from 'lucide-react';
+import { WebsiteHosting } from './WebsiteHosting';
 
 interface NetworkPeer {
   id: string;
@@ -113,6 +114,10 @@ export function RightSidebar() {
             </div>
           </div>
         </div>
+      </div>
+      
+      <div className="px-4 mb-4">
+        <WebsiteHosting />
       </div>
       
       <div className="px-4">
