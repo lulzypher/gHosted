@@ -186,10 +186,11 @@ const MessageBubble = ({ message, isCurrentUser, otherUser }: { message: Private
   );
 };
 
-const ConversationList = ({ conversations, activeConversationId, onSelect }: { 
+const ConversationList = ({ conversations, activeConversationId, onSelect, currentUserId }: { 
   conversations: Conversation[], 
   activeConversationId: string | null,
-  onSelect: (conversation: Conversation) => void 
+  onSelect: (conversation: Conversation) => void,
+  currentUserId?: number
 }) => {
   if (conversations.length === 0) {
     return (
@@ -239,7 +240,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect }: {
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === user?.id ? 'You:' : `${otherParticipant.username}:`}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username}:`}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -586,6 +587,7 @@ const MessagingPage = () => {
                 conversations={conversations || []} 
                 activeConversationId={activeConversation?.conversationId || null}
                 onSelect={setActiveConversation} 
+                currentUserId={user?.id}
               />
             )}
           </ScrollArea>
