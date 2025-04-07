@@ -7,10 +7,13 @@ import {
   insertNodeSchema, 
   insertPinSchema,
   insertNodeConnectionSchema,
+  insertPostSchema,
+  insertReactionSchema,
   contentTypeEnum,
   pinTypeEnum,
   nodeRoleEnum,
-  nodeStatusEnum
+  nodeStatusEnum,
+  reactionTypeEnum
 } from "@shared/schema";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
@@ -902,6 +905,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(validPeers);
     } catch (error) {
       res.status(500).json({ message: "Server error discovering peers" });
+    }
+  });
+
+  // REACTION ROUTES
+  
+  // Create or update a reaction
+  app.post("/api/reactions", async (req: Request, res: Response) => {
+    try {
+      // Ensure user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const reactionData = insertReactionSchema.parse(req.body);
+      
+      // Ensure the user creating the reaction is the authenticated user
+      if (reactionData.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to create reactions for other users" });
+      }
+      
+      // Validate that the post exists
+      const post = await storage.getPost(reactionData.postId);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      
+      // Create/update the reaction
+      const reaction = await storage.createReaction(reactionData);
+      
+      // Notify the post owner about the reaction
+      if (post.userId !== req.user.id) {
+        broadcastToUser(post.userId, {
+          type: "NEW_REACTION",
+          data: {
+            ...reaction,
+            username: req.user.username,
+            displayName: req.user.displayName,
+            postContent: post.content.substring(0, 50) + (post.content.length > 50 ? "..." : "")
+          }
+        });
+      }
+      
+      res.status(201).json(reaction);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: fromZodError(error).message });
+      }
+      console.error("Error creating reaction:", error);
+      res.status(500).json({ message: "Server error creating reaction" });
+    }
+  });
+  
+  // Get reactions for a post
+  app.get("/api/posts/:postId/reactions", async (req: Request, res: Response) => {
+    try {
+      const postId = parseInt(req.params.postId);
+      
+      // Validate that the post exists
+      const post = await storage.getPost(postId);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      
+      const reactions = await storage.getReactionsByPost(postId);
+      res.status(200).json(reactions);
+    } catch (error) {
+      console.error("Error fetching reactions:", error);
+      res.status(500).json({ message: "Server error fetching reactions" });
+    }
+  });
+  
+  // Get user's reactions
+  app.get("/api/users/:userId/reactions", async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      
+      // If user is requesting someone else's reactions and is not authenticated, disallow
+      if (req.user?.id !== userId && !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const reactions = await storage.getReactionsByUser(userId);
+      res.status(200).json(reactions);
+    } catch (error) {
+      console.error("Error fetching user reactions:", error);
+      res.status(500).json({ message: "Server error fetching user reactions" });
+    }
+  });
+  
+  // Delete a reaction
+  app.delete("/api/reactions/:id", async (req: Request, res: Response) => {
+    try {
+      // Ensure user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const reactionId = parseInt(req.params.id);
+      
+      // Get the reaction to check ownership
+      const reaction = await storage.getReaction(reactionId);
+      if (!reaction) {
+        return res.status(404).json({ message: "Reaction not found" });
+      }
+      
+      // Ensure the user is deleting their own reaction
+      if (reaction.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to delete this reaction" });
+      }
+      
+      // Delete the reaction
+      const deletedReaction = await storage.deleteReaction(reactionId);
+      
+      res.status(200).json({ 
+        message: "Reaction deleted successfully",
+        data: deletedReaction
+      });
+    } catch (error) {
+      console.error("Error deleting reaction:", error);
+      res.status(500).json({ message: "Server error deleting reaction" });
     }
   });
 

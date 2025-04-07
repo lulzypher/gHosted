@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Heart, Bookmark, MessageCircle, MoreHorizontal, HeartHandshake, CloudOff } from 'lucide-react';
+import { Heart, Bookmark, MessageCircle, MoreHorizontal, HeartHandshake, CloudOff, Flame } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSync } from '@/contexts/SyncContext';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useToast } from '@/hooks/use-toast';
 
 export interface PostType {
   id: number;
@@ -32,12 +33,33 @@ interface PostCardProps {
 
 export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const { isOffline } = useSync();
+  const { toast } = useToast();
+  const [isPCPinned, setIsPCPinned] = useState(false);
+  const [isBothPinned, setIsBothPinned] = useState(false);
   
   const isLocalOnly = post.cid.startsWith('local-');
   const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   
   const handlePin = (type: 'pc' | 'both') => {
-    if (onPin) onPin(post.cid, type);
+    if (onPin) {
+      onPin(post.cid, type);
+      
+      if (type === 'pc') {
+        setIsPCPinned(true);
+        setIsBothPinned(false);
+        toast({
+          title: "Pinned to PC",
+          description: "This content will be preserved on your PC only",
+        });
+      } else {
+        setIsPCPinned(false);
+        setIsBothPinned(true);
+        toast({
+          title: "Pinned to PC & Mobile",
+          description: "This content will be preserved on all your devices",
+        });
+      }
+    }
   };
   
   const handleDelete = () => {
@@ -79,15 +101,22 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handlePin('pc')}>
-              <Heart className="h-4 w-4 mr-2" />
-              Pin to PC
+            <DropdownMenuItem onClick={() => handlePin('pc')} className={isPCPinned ? 'text-red-500' : ''}>
+              <div className="flex items-center">
+                <Heart className={`h-4 w-4 mr-2 ${isPCPinned ? 'fill-red-500' : ''}`} />
+                Pin to PC
+              </div>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handlePin('both')}>
-              <HeartHandshake className="h-4 w-4 mr-2" />
-              Pin to PC & Mobile
+            <DropdownMenuItem onClick={() => handlePin('both')} className={isBothPinned ? 'text-orange-500' : ''}>
+              <div className="flex items-center">
+                <div className="relative mr-2">
+                  <Heart className={`h-4 w-4 ${isBothPinned ? 'fill-orange-500' : ''}`} />
+                  <Flame className="h-2.5 w-2.5 absolute -top-1 -right-1 text-orange-500" />
+                </div>
+                Pin to PC & Mobile
+              </div>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDelete}>
+            <DropdownMenuItem onClick={handleDelete} className="text-destructive">
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -110,13 +139,26 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
           <MessageCircle className="h-4 w-4" />
           <span>{post.commentCount}</span>
         </Button>
-        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => handlePin('pc')}>
-          <Heart className="h-4 w-4" />
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className={`gap-1 ${isPCPinned ? 'text-red-500' : 'text-muted-foreground hover:text-red-500'}`} 
+          onClick={() => handlePin('pc')}
+        >
+          <Heart className={`h-4 w-4 ${isPCPinned ? 'fill-current' : ''}`} />
           <span>{post.likes}</span>
         </Button>
-        <Button variant="ghost" size="sm" className="text-muted-foreground gap-1" onClick={() => handlePin('both')}>
-          <HeartHandshake className="h-4 w-4" />
-          <span>Pin</span>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className={`gap-1 ${isBothPinned ? 'text-orange-500' : 'text-muted-foreground hover:text-orange-500'}`} 
+          onClick={() => handlePin('both')}
+        >
+          <div className="relative">
+            <Heart className={`h-4 w-4 ${isBothPinned ? 'fill-current' : ''}`} />
+            <Flame className="h-2.5 w-2.5 absolute -top-1 -right-1 text-orange-500" />
+          </div>
+          <span>Both</span>
         </Button>
         <Button variant="ghost" size="sm" className="text-muted-foreground">
           <Bookmark className="h-4 w-4" />

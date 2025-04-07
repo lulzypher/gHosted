@@ -1,5 +1,5 @@
 import { pgTable, text, serial, integer, boolean, timestamp, jsonb, pgEnum, unique } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, desc, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -8,6 +8,7 @@ export const nodeRoleEnum = pgEnum('node_role', ['website', 'server', 'mobile', 
 export const nodeStatusEnum = pgEnum('node_status', ['online', 'offline', 'syncing']);
 export const pinTypeEnum = pgEnum('pin_type', ['pc', 'mobile', 'both']);
 export const contentTypeEnum = pgEnum('content_type', ['post', 'comment', 'media', 'profile']);
+export const reactionTypeEnum = pgEnum('reaction_type', ['like', 'love', 'save']);
 
 // User schema with enhanced public key cryptography
 export const users = pgTable("users", {
@@ -283,6 +284,80 @@ export const nodeConnectionsRelations = relations(nodeConnections, ({ one }) => 
   }),
 }));
 
+// Posts schema for social media posts
+export const posts = pgTable("posts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  content: text("content").notNull(),
+  mediaCid: text("media_cid"),
+  contentCid: text("content_cid").notNull().unique(),
+  signature: text("signature"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  likes: integer("likes").default(0),
+  shares: integer("shares").default(0),
+  comments: integer("comments").default(0),
+  isDeleted: boolean("is_deleted").default(false),
+  isPrivate: boolean("is_private").default(false),
+  metadata: jsonb("metadata"),
+});
+
+export const insertPostSchema = createInsertSchema(posts).pick({
+  userId: true,
+  content: true,
+  mediaCid: true,
+  contentCid: true,
+  signature: true,
+  isPrivate: true,
+  metadata: true,
+});
+
+// Reactions schema for post reactions (likes, loves, etc.)
+export const reactions = pgTable("reactions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  postId: integer("post_id").notNull().references(() => posts.id),
+  reactionType: reactionTypeEnum("reaction_type").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Pin settings
+  pinToPC: boolean("pin_to_pc").default(false),
+  pinToMobile: boolean("pin_to_mobile").default(false),
+}, (table) => {
+  return {
+    // Ensure unique reactions per user and post
+    uniqueReaction: unique().on(table.userId, table.postId),
+  };
+});
+
+export const insertReactionSchema = createInsertSchema(reactions).pick({
+  userId: true,
+  postId: true,
+  reactionType: true,
+  pinToPC: true,
+  pinToMobile: true,
+});
+
+// Define post relations
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [posts.userId],
+    references: [users.id],
+  }),
+  reactions: many(reactions),
+}));
+
+// Define reaction relations
+export const reactionsRelations = relations(reactions, ({ one }) => ({
+  user: one(users, {
+    fields: [reactions.userId],
+    references: [users.id],
+  }),
+  post: one(posts, {
+    fields: [reactions.postId],
+    references: [posts.id],
+  }),
+}));
+
 export const websiteHostingRelations = relations(websiteHosting, ({ one }) => ({
   node: one(nodes, {
     fields: [websiteHosting.nodeId],
@@ -308,3 +383,9 @@ export type InsertNodeConnection = z.infer<typeof insertNodeConnectionSchema>;
 
 export type WebsiteHosting = typeof websiteHosting.$inferSelect;
 export type InsertWebsiteHosting = z.infer<typeof insertWebsiteHostingSchema>;
+
+export type Post = typeof posts.$inferSelect;
+export type InsertPost = z.infer<typeof insertPostSchema>;
+
+export type Reaction = typeof reactions.$inferSelect;
+export type InsertReaction = z.infer<typeof insertReactionSchema>;

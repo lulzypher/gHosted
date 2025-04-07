@@ -4,12 +4,15 @@ import {
   contents, type Content, type InsertContent,
   pins, type Pin, type InsertPin,
   nodeConnections, type NodeConnection, type InsertNodeConnection,
-  websiteHosting, type WebsiteHosting, type InsertWebsiteHosting
+  websiteHosting, type WebsiteHosting, type InsertWebsiteHosting,
+  posts, type Post, type InsertPost,
+  reactions, type Reaction, type InsertReaction,
+  reactionTypeEnum
 } from "@shared/schema";
 
 // Import db for DatabaseStorage
 import { db } from "./db";
-import { eq, desc, and, or, isNull } from "drizzle-orm";
+import { eq, desc, and, or, isNull, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import pg from "pg";
@@ -64,6 +67,23 @@ export interface IStorage {
   getActiveWebsiteHostings(): Promise<WebsiteHosting[]>;
   updateWebsiteHostingHealth(id: number, health: number): Promise<WebsiteHosting>;
   endWebsiteHosting(id: number): Promise<WebsiteHosting>;
+  
+  // Post operations
+  createPost(post: InsertPost): Promise<Post>;
+  getPost(id: number): Promise<Post | undefined>;
+  getPostByCID(cid: string): Promise<Post | undefined>;
+  getPostsByUser(userId: number): Promise<Post[]>;
+  getFeedPosts(limit?: number, offset?: number): Promise<Post[]>;
+  updatePostStats(id: number, likes?: number, comments?: number, shares?: number): Promise<Post>;
+  deletePost(id: number): Promise<Post>;
+  
+  // Reaction operations
+  createReaction(reaction: InsertReaction): Promise<Reaction>;
+  getReaction(id: number): Promise<Reaction | undefined>;
+  getReactionByUserAndPost(userId: number, postId: number): Promise<Reaction | undefined>;
+  getReactionsByPost(postId: number): Promise<Reaction[]>;
+  getReactionsByUser(userId: number): Promise<Reaction[]>;
+  deleteReaction(id: number): Promise<Reaction>;
   
   // Session store
   sessionStore: session.Store;
@@ -322,6 +342,169 @@ export class DatabaseStorage implements IStorage {
     }
     
     return updatedHosting;
+  }
+
+  // Post operations
+  async createPost(post: InsertPost): Promise<Post> {
+    const [newPost] = await db.insert(posts).values(post).returning();
+    return newPost;
+  }
+
+  async getPost(id: number): Promise<Post | undefined> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    return post || undefined;
+  }
+
+  async getPostByCID(cid: string): Promise<Post | undefined> {
+    const [post] = await db.select().from(posts).where(eq(posts.contentCid, cid));
+    return post || undefined;
+  }
+
+  async getPostsByUser(userId: number): Promise<Post[]> {
+    return await db.select()
+      .from(posts)
+      .where(and(
+        eq(posts.userId, userId),
+        eq(posts.isDeleted, false)
+      ))
+      .orderBy(desc(posts.createdAt));
+  }
+
+  async getFeedPosts(limit: number = 20, offset: number = 0): Promise<Post[]> {
+    return await db.select()
+      .from(posts)
+      .where(and(
+        eq(posts.isDeleted, false),
+        eq(posts.isPrivate, false)
+      ))
+      .orderBy(desc(posts.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async updatePostStats(id: number, likes?: number, comments?: number, shares?: number): Promise<Post> {
+    const updateData: Partial<Post> = {};
+    
+    if (likes !== undefined) {
+      updateData.likes = likes;
+    }
+    
+    if (comments !== undefined) {
+      updateData.comments = comments;
+    }
+    
+    if (shares !== undefined) {
+      updateData.shares = shares;
+    }
+    
+    const [updatedPost] = await db.update(posts)
+      .set(updateData)
+      .where(eq(posts.id, id))
+      .returning();
+    
+    if (!updatedPost) {
+      throw new Error(`Post with ID ${id} not found`);
+    }
+    
+    return updatedPost;
+  }
+
+  async deletePost(id: number): Promise<Post> {
+    const [deletedPost] = await db.update(posts)
+      .set({ isDeleted: true })
+      .where(eq(posts.id, id))
+      .returning();
+    
+    if (!deletedPost) {
+      throw new Error(`Post with ID ${id} not found`);
+    }
+    
+    return deletedPost;
+  }
+
+  // Reaction operations
+  async createReaction(reaction: InsertReaction): Promise<Reaction> {
+    // First check if a reaction already exists
+    const existingReaction = await this.getReactionByUserAndPost(
+      reaction.userId,
+      reaction.postId
+    );
+
+    if (existingReaction) {
+      // Update the existing reaction
+      const [updatedReaction] = await db.update(reactions)
+        .set({
+          reactionType: reaction.reactionType,
+          pinToPC: reaction.pinToPC,
+          pinToMobile: reaction.pinToMobile,
+        })
+        .where(eq(reactions.id, existingReaction.id))
+        .returning();
+      
+      return updatedReaction;
+    }
+
+    // Create a new reaction
+    const [newReaction] = await db.insert(reactions).values(reaction).returning();
+    
+    // Update the post's like count
+    const post = await this.getPost(reaction.postId);
+    if (post) {
+      await this.updatePostStats(post.id, (post.likes || 0) + 1);
+    }
+    
+    return newReaction;
+  }
+
+  async getReaction(id: number): Promise<Reaction | undefined> {
+    const [reaction] = await db.select().from(reactions).where(eq(reactions.id, id));
+    return reaction || undefined;
+  }
+
+  async getReactionByUserAndPost(userId: number, postId: number): Promise<Reaction | undefined> {
+    const [reaction] = await db.select()
+      .from(reactions)
+      .where(and(
+        eq(reactions.userId, userId),
+        eq(reactions.postId, postId)
+      ));
+    
+    return reaction || undefined;
+  }
+
+  async getReactionsByPost(postId: number): Promise<Reaction[]> {
+    return await db.select()
+      .from(reactions)
+      .where(eq(reactions.postId, postId))
+      .orderBy(desc(reactions.createdAt));
+  }
+
+  async getReactionsByUser(userId: number): Promise<Reaction[]> {
+    return await db.select()
+      .from(reactions)
+      .where(eq(reactions.userId, userId))
+      .orderBy(desc(reactions.createdAt));
+  }
+
+  async deleteReaction(id: number): Promise<Reaction> {
+    // Get the reaction before deleting
+    const reaction = await this.getReaction(id);
+    if (!reaction) {
+      throw new Error(`Reaction with ID ${id} not found`);
+    }
+    
+    // Delete the reaction
+    const [deletedReaction] = await db.delete(reactions)
+      .where(eq(reactions.id, id))
+      .returning();
+    
+    // Update the post's like count
+    const post = await this.getPost(reaction.postId);
+    if (post && (post.likes || 0) > 0) {
+      await this.updatePostStats(post.id, (post.likes || 0) - 1);
+    }
+    
+    return deletedReaction;
   }
 }
 
