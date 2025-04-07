@@ -370,30 +370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // USER ROUTES
   
-  // Get user profile
-  app.get("/api/users/:id", async (req: Request, res: Response) => {
-    try {
-      const userId = parseInt(req.params.id);
-      const user = await storage.getUser(userId);
-      
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      res.status(200).json({
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        bio: user.bio,
-        avatarCid: user.avatarCid,
-        did: user.did
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Server error fetching user" });
-    }
-  });
-  
-  // Search users for messaging
+  // Search users for messaging - this route must come BEFORE the /:id route
   app.get("/api/users/search", async (req: Request, res: Response) => {
     try {
       const query = req.query.q as string;
@@ -428,6 +405,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(results);
     } catch (error) {
       console.error("Error searching users:", error);
+      res.status(500).json({ message: "Server error fetching user" });
+    }
+  });
+  
+  // Get user profile - IMPORTANT: This route must come AFTER the /search route
+  app.get("/api/users/:id", async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.status(200).json({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        bio: user.bio,
+        avatarCid: user.avatarCid,
+        did: user.did
+      });
+    } catch (error) {
       res.status(500).json({ message: "Server error fetching user" });
     }
   });
