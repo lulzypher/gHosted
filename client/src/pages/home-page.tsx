@@ -22,18 +22,14 @@ export default function HomePage() {
   const { isInitialized, initializeP2P } = useP2P();
   const [activeTab, setActiveTab] = useState("home");
   
-  // Start peer discovery when the component mounts
+  // Only initialize P2P networking when component mounts
   useEffect(() => {
-    // Automatically start discovery when the component mounts if the connection is ready
-    if (connectionStatus === 'ready') {
-      startDiscovery();
-    }
-    
     // Initialize P2P networking if not already initialized
     if (!isInitialized) {
       initializeP2P();
     }
-  }, [connectionStatus, startDiscovery, isInitialized, initializeP2P]);
+    // No longer automatically call startDiscovery to avoid repeated toasts
+  }, [isInitialized, initializeP2P]);
 
   return (
     <div className="h-screen flex flex-col bg-[#18191a] text-[#e4e6eb]">

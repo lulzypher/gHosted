@@ -54,13 +54,9 @@ export const PeerDiscoveryProvider: React.FC<{ children: ReactNode }> = ({ child
   const startDiscovery = () => {
     setIsDiscovering(true);
     
-    // Simulate peer discovery
+    // Simulate peer discovery without automatic toast
     setTimeout(() => {
       setIsDiscovering(false);
-      toast({
-        title: "Peer Discovery",
-        description: "Found 2 peers on your local network",
-      });
     }, 1500);
   };
 
