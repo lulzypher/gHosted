@@ -341,11 +341,27 @@ const MessagingPage = () => {
   // Sending a new message
   const sendMessageMutation = useMutation({
     mutationFn: async ({ conversationId, content }: { conversationId: string, content: string }) => {
-      // In a production app, we'd encrypt the message first
-      const encryptedContent = await cryptoService.encryptMessage(content, "test-key");
+      // Get recipient information from conversation data
+      if (!activeConversationData) {
+        throw new Error("Cannot send message - no active conversation");
+      }
+      
+      // Find the recipient (the participant who is not the current user)
+      const recipient = activeConversationData.participants?.find(p => p.userId !== user?.id);
+      if (!recipient) {
+        throw new Error("Cannot find recipient user");
+      }
+      
+      // Get the recipient's user data to get their public key
+      // For now, we'll use a placeholder key since we haven't implemented the full key exchange
+      // In a full implementation, we would fetch and store the recipient's public key
+      const publicKey = recipient.publicKey || "DEFAULT_PUBLIC_KEY"; 
+      
+      // Encrypt the message content
+      const encryptedContent = await cryptoService.encryptMessage(content, publicKey);
       
       const response = await apiRequest("POST", `/api/conversations/${conversationId}/messages`, {
-        content,
+        content, // Plain content for development
         encryptedContent: encryptedContent,
         encryptionType: "hybrid",
         status: "sent"
