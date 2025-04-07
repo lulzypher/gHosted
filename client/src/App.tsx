@@ -313,9 +313,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <P2PProvider>
-          <PeerDiscoveryProvider>
-            <SyncProvider>
+        {/* Rearranged context providers to avoid circular dependencies */}
+        <SyncProvider>
+          <P2PProvider>
+            <PeerDiscoveryProvider>
               <Switch>
                 <ProtectedRoute path="/" component={HomePage} />
                 <Route path="/auth" component={AuthPage} />
@@ -325,9 +326,9 @@ function App() {
               {/* Show conflict resolution dialog when needed */}
               <ConflictResolution />
               <Toaster />
-            </SyncProvider>
-          </PeerDiscoveryProvider>
-        </P2PProvider>
+            </PeerDiscoveryProvider>
+          </P2PProvider>
+        </SyncProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

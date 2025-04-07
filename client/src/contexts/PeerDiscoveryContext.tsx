@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { LocalPeer } from '@/components/LocalPeers';
+import { WebSocket as WSType } from 'ws';
 
 // Define the context types
 export type ConnectionStatus = 'initializing' | 'ready' | 'error' | 'disconnected';
