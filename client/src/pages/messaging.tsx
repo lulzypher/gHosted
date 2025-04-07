@@ -236,7 +236,14 @@ const ConversationList = ({ conversations, activeConversationId, onSelect }: {
               
               <p className="text-sm truncate text-muted-foreground">
                 {conversation.lastMessage 
-                  ? getMessagePreview(conversation.lastMessage)
+                  ? (
+                    <>
+                      <span className="font-medium mr-1">
+                        {conversation.lastMessage.senderId === user?.id ? 'You:' : `${otherParticipant.username}:`}
+                      </span>
+                      {getMessagePreview(conversation.lastMessage)}
+                    </>
+                  )
                   : "No messages yet"}
               </p>
             </div>
@@ -344,6 +351,7 @@ const MessagingPage = () => {
   const [newMessage, setNewMessage] = useState("");
   const [showNewConversation, setShowNewConversation] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   
   // Load user's conversations
   const { data: conversations, isLoading: isLoadingConversations } = useQuery({
@@ -449,6 +457,66 @@ const MessagingPage = () => {
     }
   });
   
+  // Setup WebSocket connection for real-time updates
+  useEffect(() => {
+    if (!user) return;
+
+    // Setup WebSocket connection
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
+    
+    const socket = new WebSocket(wsUrl);
+    socketRef.current = socket;
+    
+    socket.onopen = () => {
+      console.log("WebSocket connected");
+      
+      // Send authentication message when connected
+      if (user) {
+        socket.send(JSON.stringify({
+          type: "auth",
+          userId: user.id
+        }));
+      }
+    };
+    
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle different message types
+        if (data.type === "new_message" && data.message) {
+          // Invalidate queries to refresh conversation data
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+          
+          // If this message is for the active conversation, also update that
+          if (data.message.conversationId === activeConversation?.conversationId) {
+            queryClient.invalidateQueries({ 
+              queryKey: ["/api/conversations", activeConversation.conversationId] 
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error handling WebSocket message:", error);
+      }
+    };
+    
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+    
+    socket.onclose = () => {
+      console.log("WebSocket disconnected");
+    };
+    
+    // Clean up on unmount
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [user, queryClient, activeConversation]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
