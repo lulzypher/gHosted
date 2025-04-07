@@ -243,7 +243,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center">
                 <p className="font-medium truncate">
-                  {otherParticipant.displayName || otherParticipant.username || "User"}
+                  {otherParticipant.displayName || otherParticipant.username || conversation.conversationId.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' & ')}
                 </p>
                 {conversation.lastMessage && (
                   <p className="text-xs text-muted-foreground">
@@ -257,7 +257,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : 'User:'}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username || 'User'}:`}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -710,8 +710,8 @@ const MessagingPage = () => {
                             conversationId: activeConversation.conversationId,
                             joinedAt: new Date().toISOString(),
                             lastReadAt: null,
-                            username: "User", 
-                            displayName: "User" // Changed from "Unknown User" for better UX
+                            username: activeConversation.conversationId.split('_')[1] === "user" ? activeConversation.conversationId.split('_')[2] : activeConversation.conversationId.split('_')[1], 
+                            displayName: activeConversation.conversationId.split('_')[1] === "user" ? activeConversation.conversationId.split('_')[2] : activeConversation.conversationId.split('_')[1] // Use conversation ID parts for better labeling
                           }}
                         />
                       ))
