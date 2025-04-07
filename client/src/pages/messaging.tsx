@@ -3,6 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useWebSocket } from "@/contexts/WebSocketContext";
 
 // Helper function to get decrypted message content for display
 const getMessageContent = (message: PrivateMessage) => {
@@ -206,7 +207,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
     <div className="space-y-2">
       {conversations.map((conversation) => {
         // Find the other participant (not the current user)
-        const otherParticipant = conversation.participants[0];
+        const otherParticipant = conversation.participants.find(p => p.userId !== currentUserId) || conversation.participants[0];
         
         return (
           <div
@@ -293,7 +294,7 @@ const NewConversationDialog = ({ isOpen, onClose, onStart }: {
             <Input
               placeholder="Search by username..."
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
             />
           </div>
           
@@ -347,12 +348,12 @@ const NewConversationDialog = ({ isOpen, onClose, onStart }: {
 const MessagingPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { addMessageListener } = useWebSocket(); // Use our WebSocketContext
   const queryClient = useQueryClient();
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [showNewConversation, setShowNewConversation] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<WebSocket | null>(null);
   
   // Load user's conversations
   const { data: conversations, isLoading: isLoadingConversations } = useQuery({
@@ -384,7 +385,7 @@ const MessagingPage = () => {
       }
       
       // Find the recipient (the participant who is not the current user)
-      const recipient = activeConversationData.participants?.find(p => p.userId !== user?.id);
+      const recipient = activeConversationData.participants?.find((p: ConversationParticipant) => p.userId !== user?.id);
       if (!recipient) {
         throw new Error("Cannot find recipient user");
       }
@@ -458,65 +459,45 @@ const MessagingPage = () => {
     }
   });
   
-  // Setup WebSocket connection for real-time updates
+  // Setup WebSocket message listener for real-time updates using WebSocketContext
   useEffect(() => {
     if (!user) return;
 
-    // Setup WebSocket connection
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
-    
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-    
-    socket.onopen = () => {
-      console.log("WebSocket connected");
-      
-      // Send authentication message when connected
-      if (user) {
-        socket.send(JSON.stringify({
-          type: "auth",
-          userId: user.id
-        }));
-      }
-    };
-    
-    socket.onmessage = (event) => {
+    // Register a message listener with our WebSocketContext
+    const unsubscribe = addMessageListener((data) => {
       try {
-        const data = JSON.parse(event.data);
-        
-        // Handle different message types
-        if (data.type === "new_message" && data.message) {
+        // Handle different message types - server sends "NEW_MESSAGE" (uppercase)
+        if (data.type === "NEW_MESSAGE" && data.data?.message) {
+          console.log("Received real-time message:", data);
+          
           // Invalidate queries to refresh conversation data
           queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
           
           // If this message is for the active conversation, also update that
-          if (data.message.conversationId === activeConversation?.conversationId) {
+          if (activeConversation && data.data.message.conversationId === activeConversation.conversationId) {
             queryClient.invalidateQueries({ 
               queryKey: ["/api/conversations", activeConversation.conversationId] 
+            });
+          }
+          
+          // Show a toast notification for new messages if not in the current conversation
+          if (data.data.message.conversationId !== activeConversation?.conversationId) {
+            // Find the sender's info
+            toast({
+              title: "New Message",
+              description: "You received a new message",
+              variant: "default",
             });
           }
         }
       } catch (error) {
         console.error("Error handling WebSocket message:", error);
       }
-    };
-    
-    socket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-    
-    socket.onclose = () => {
-      console.log("WebSocket disconnected");
-    };
+    });
     
     // Clean up on unmount
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-    };
-  }, [user, queryClient, activeConversation]);
+    return unsubscribe;
+  }, [user, queryClient, activeConversation, addMessageListener, toast]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -692,7 +673,7 @@ const MessagingPage = () => {
                 <form onSubmit={handleSendMessage} className="flex space-x-2">
                   <Input
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMessage(e.target.value)}
                     placeholder="Type a message..."
                     className="flex-1"
                   />

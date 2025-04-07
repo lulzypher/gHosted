@@ -6,6 +6,8 @@ interface WebSocketContextProps {
   isConnected: boolean;
   lastActivity: Date | null;
   reconnect: () => void;
+  // Add a listener registration function for other components to subscribe to message events
+  addMessageListener: (callback: (data: any) => void) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextProps | undefined>(undefined);
@@ -18,6 +20,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const messageListenersRef = useRef<Array<(data: any) => void>>([]);
 
   // Function to establish WebSocket connection
   const connectWebSocket = () => {
@@ -161,6 +164,18 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // Update last activity time whenever we receive any message
           setLastActivity(new Date());
 
+          // Notify all listeners about this message (regardless of type)
+          // This allows components to handle specific message types they care about
+          if (messageListenersRef.current.length > 0) {
+            messageListenersRef.current.forEach(listener => {
+              try {
+                listener(data);
+              } catch (listenerError) {
+                console.error('Error in message listener:', listenerError);
+              }
+            });
+          }
+
           // Process messages based on type
           switch (data.type) {
             case 'NEW_POST':
@@ -175,6 +190,13 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               toast({
                 title: "Content Pinned",
                 description: "Content has been pinned to IPFS",
+              });
+              break;
+            case 'NEW_MESSAGE':
+              // Handle new message notification
+              toast({
+                title: "New Message",
+                description: "You received a new message",
               });
               break;
             case 'PING':
@@ -281,8 +303,26 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     connectWebSocket();
   };
 
+  // Add a message listener that can be cleaned up
+  const addMessageListener = (callback: (data: any) => void) => {
+    // Add the listener to our array
+    messageListenersRef.current.push(callback);
+    
+    // Return a function to remove this listener when component unmounts
+    return () => {
+      messageListenersRef.current = messageListenersRef.current.filter(
+        listener => listener !== callback
+      );
+    };
+  };
+
   return (
-    <WebSocketContext.Provider value={{ isConnected, lastActivity, reconnect }}>
+    <WebSocketContext.Provider value={{ 
+      isConnected, 
+      lastActivity, 
+      reconnect,
+      addMessageListener
+    }}>
       {children}
     </WebSocketContext.Provider>
   );
