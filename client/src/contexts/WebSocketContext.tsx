@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useUser } from './UserContext';
+import { useAuth } from '@/hooks/use-auth';
 
 interface WebSocketContextProps {
   isConnected: boolean;
@@ -13,7 +13,7 @@ interface WebSocketContextProps {
 const WebSocketContext = createContext<WebSocketContextProps | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useUser();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [isConnected, setIsConnected] = useState(false);
   const [lastActivity, setLastActivity] = useState<Date | null>(null);
