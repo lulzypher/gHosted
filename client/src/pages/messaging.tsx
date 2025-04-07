@@ -246,7 +246,20 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center">
                 <p className="font-medium truncate">
-                  {otherParticipant.displayName || otherParticipant.username || "Chat Partner"}
+                  {otherParticipant.displayName || otherParticipant.username || (() => {
+                    // Extract username from conversation ID if available
+                    try {
+                      // Format is typically "user_X_user_Y"
+                      const parts = conversation.conversationId.split('_');
+                      const idPart = parts[1] === String(currentUserId) ? parts[3] : parts[1];
+                      if (idPart && idPart !== String(currentUserId)) {
+                        return `User ${idPart}`;
+                      }
+                    } catch (e) {
+                      console.error("Error extracting user ID from conversation:", e);
+                    }
+                    return "Chat Partner";
+                  })()}
                 </p>
                 {conversation.lastMessage && (
                   <p className="text-xs text-muted-foreground">
@@ -260,7 +273,20 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username || otherParticipant.displayName || 'Partner'}:`}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username || otherParticipant.displayName || (() => {
+                          // Extract username from conversation ID if available
+                          try {
+                            // Format is typically "user_X_user_Y"
+                            const parts = conversation.conversationId.split('_');
+                            const idPart = parts[1] === String(currentUserId) ? parts[3] : parts[1];
+                            if (idPart && idPart !== String(currentUserId)) {
+                              return `User ${idPart}`;
+                            }
+                          } catch (e) {
+                            console.error("Error extracting user ID from conversation:", e);
+                          }
+                          return "Partner";
+                        })()}:`}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -659,7 +685,22 @@ const MessagingPage = () => {
                     <h3 className="font-medium">
                       {isLoadingMessages 
                         ? "Loading..." 
-                        : (otherParticipant?.displayName || otherParticipant?.username || "Chat")}
+                        : (otherParticipant?.displayName || otherParticipant?.username || (() => {
+                          // Extract username from conversation ID if available
+                          try {
+                            if (activeConversation) {
+                              // Format is typically "user_X_user_Y"
+                              const parts = activeConversation.conversationId.split('_');
+                              const idPart = parts[1] === String(user?.id) ? parts[3] : parts[1];
+                              if (idPart && idPart !== String(user?.id)) {
+                                return `User ${idPart}`;
+                              }
+                            }
+                          } catch (e) {
+                            console.error("Error extracting user ID from conversation:", e);
+                          }
+                          return "Chat";
+                        })())}
                     </h3>
                     <div className="flex items-center text-xs text-primary">
                       <Lock className="h-3 w-3 mr-1" /> End-to-end encrypted
