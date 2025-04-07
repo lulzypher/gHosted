@@ -591,14 +591,18 @@ const MessagingPage = () => {
                   </div>
                 ) : activeConversationData?.messages?.length ? (
                   <div className="space-y-4">
-                    {activeConversationData.messages.map((message: PrivateMessage) => (
-                      <MessageBubble 
-                        key={message.id} 
-                        message={message} 
-                        isCurrentUser={message.senderId === user?.id}
-                        otherUser={otherParticipant!}
-                      />
-                    ))}
+                    {/* Sort messages by timestamp, oldest first */}
+                    {[...activeConversationData.messages]
+                      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime())
+                      .map((message: PrivateMessage) => (
+                        <MessageBubble 
+                          key={message.id} 
+                          message={message} 
+                          isCurrentUser={message.senderId === user?.id}
+                          otherUser={otherParticipant!}
+                        />
+                      ))
+                    }
                     <div ref={messagesEndRef} />
                   </div>
                 ) : (
