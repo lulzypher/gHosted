@@ -243,7 +243,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center">
                 <p className="font-medium truncate">
-                  {otherParticipant.displayName || otherParticipant.username || "Unknown User"}
+                  {otherParticipant.displayName || otherParticipant.username || "User"}
                 </p>
                 {conversation.lastMessage && (
                   <p className="text-xs text-muted-foreground">
@@ -257,8 +257,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : 
-                          `${otherParticipant.username || 'User'}:`}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : 'User:'}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -556,9 +555,41 @@ const MessagingPage = () => {
   };
   
   // Find the other participant (not the current user)
-  const otherParticipant = activeConversationData?.participants?.find(
-    (p: ConversationParticipant) => p.userId !== user?.id
-  ) || (activeConversationData?.participants?.length ? activeConversationData?.participants[0] : null);
+  // First check if we have the active conversation data from the API
+  const otherParticipant = (() => {
+    // If we have conversation data from API, use that
+    if (activeConversationData?.participants) {
+      // Try to find the other user (not the current user)
+      const other = activeConversationData.participants.find(
+        (p: ConversationParticipant) => p.userId !== user?.id
+      );
+      
+      // If found, return it
+      if (other) return other;
+      
+      // If not found but we have participants, use the first one
+      if (activeConversationData.participants.length > 0) {
+        return activeConversationData.participants[0];
+      }
+    }
+    
+    // If API data not loaded yet but we have the selected conversation object
+    // Try to get the other participant from the selected conversation data
+    if (activeConversation?.participants) {
+      const other = activeConversation.participants.find(
+        (p: ConversationParticipant) => p.userId !== user?.id
+      );
+      
+      if (other) return other;
+      
+      if (activeConversation.participants.length > 0) {
+        return activeConversation.participants[0];
+      }
+    }
+    
+    // No participant found
+    return null;
+  })();
 
   return (
     <div className="container mx-auto py-6 max-w-7xl">
@@ -609,7 +640,9 @@ const MessagingPage = () => {
                   
                   <div>
                     <h3 className="font-medium">
-                      {otherParticipant?.displayName || otherParticipant?.username || "Loading..."}
+                      {isLoadingMessages 
+                        ? "Loading..." 
+                        : (otherParticipant?.displayName || otherParticipant?.username || "Chat")}
                     </h3>
                     <div className="flex items-center text-xs text-primary">
                       <Lock className="h-3 w-3 mr-1" /> End-to-end encrypted
@@ -667,13 +700,18 @@ const MessagingPage = () => {
                           key={message.id} 
                           message={message} 
                           isCurrentUser={message.senderId === user?.id}
-                          otherUser={otherParticipant || {
+                          otherUser={otherParticipant ? {
+                            ...otherParticipant,
+                            // Make sure we have username and displayName
+                            username: otherParticipant.username || 'User',
+                            displayName: otherParticipant.displayName || otherParticipant.username || 'User'
+                          } : {
                             userId: 0,
                             conversationId: activeConversation.conversationId,
                             joinedAt: new Date().toISOString(),
                             lastReadAt: null,
-                            username: "Unknown",
-                            displayName: "Unknown User"
+                            username: "User", 
+                            displayName: "User" // Changed from "Unknown User" for better UX
                           }}
                         />
                       ))
@@ -685,8 +723,7 @@ const MessagingPage = () => {
                     <Lock className="h-12 w-12 mx-auto mb-4 opacity-20" />
                     <p className="text-lg font-medium">End-to-end Encrypted Chat</p>
                     <p className="text-sm max-w-md mx-auto mt-2">
-                      Messages are encrypted using advanced cryptography. Only you and {' '}
-                      {otherParticipant?.displayName || otherParticipant?.username || 'the other user'} can read them.
+                      Messages are encrypted using advanced cryptography. Only you and the recipient can read them.
                     </p>
                   </div>
                 )}
