@@ -220,6 +220,9 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
           console.error("Could not find conversation participant", conversation);
           return null;
         }
+        
+        // Get the username from the conversation participant
+        // This is now available directly from the user data in participants
 
         return (
           <div
@@ -257,7 +260,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : 'Partner:'}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username || otherParticipant.displayName || 'Partner'}:`}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -498,10 +501,24 @@ const MessagingPage = () => {
           
           // Show a toast notification for new messages if not in the current conversation
           if (data.data.message.conversationId !== activeConversation?.conversationId) {
-            // Find the sender's info
+            // Find the sender's info from conversations
+            const senderConversation = conversations?.find((c: Conversation) => 
+              c.conversationId === data.data.message.conversationId
+            );
+            
+            let senderName = "User";
+            if (senderConversation) {
+              const sender = senderConversation.participants.find(
+                (p: ConversationParticipant) => p.userId === data.data.message.senderId
+              );
+              if (sender) {
+                senderName = sender.displayName || sender.username || "User";
+              }
+            }
+            
             toast({
               title: "New Message",
-              description: "You received a new message",
+              description: `You received a new message from ${senderName}`,
               variant: "default",
             });
           }
@@ -513,7 +530,7 @@ const MessagingPage = () => {
     
     // Clean up on unmount
     return unsubscribe;
-  }, [user, queryClient, activeConversation, addMessageListener, toast]);
+  }, [user, queryClient, activeConversation, addMessageListener, toast, conversations]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -710,8 +727,36 @@ const MessagingPage = () => {
                             conversationId: activeConversation.conversationId,
                             joinedAt: new Date().toISOString(),
                             lastReadAt: null,
-                            username: "Partner", 
-                            displayName: "Chat Partner" // Simpler fallback
+                            username: (() => {
+                              // Try to extract a displayable username from the conversation ID
+                              // Format is typically "user_X_user_Y"
+                              let extractedUsername = "";
+                              try {
+                                const parts = activeConversation.conversationId.split('_');
+                                const idPart = parts[1] === String(user?.id) ? parts[3] : parts[1];
+                                if (idPart && idPart !== String(user?.id)) {
+                                  extractedUsername = `User ${idPart}`;
+                                }
+                              } catch (e) {
+                                console.error("Error extracting user ID from conversation:", e);
+                              }
+                              return extractedUsername || "Partner";
+                            })(),
+                            displayName: (() => {
+                              // Try to extract a displayable username from the conversation ID
+                              // Format is typically "user_X_user_Y"
+                              let extractedUsername = "";
+                              try {
+                                const parts = activeConversation.conversationId.split('_');
+                                const idPart = parts[1] === String(user?.id) ? parts[3] : parts[1];
+                                if (idPart && idPart !== String(user?.id)) {
+                                  extractedUsername = `User ${idPart}`;
+                                }
+                              } catch (e) {
+                                console.error("Error extracting user ID from conversation:", e);
+                              }
+                              return extractedUsername || "Chat Partner";
+                            })() // More meaningful fallback
                           }}
                         />
                       ))
