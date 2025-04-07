@@ -387,3 +387,177 @@ export function createKeyFingerprint(publicKey: string): string {
   const shortKey = publicKey.substring(0, 8).replace(/[+/=]/g, '');
   return shortKey.match(/.{1,4}/g)?.join(':') || '';
 }
+
+// Encrypt a message for secure transmission
+export async function encryptMessage(message: string, recipientPublicKey: string): Promise<string> {
+  try {
+    // For efficient encryption of longer messages, we use a hybrid approach:
+    // 1. Generate a random symmetric key
+    // 2. Encrypt the message with the symmetric key
+    // 3. Encrypt the symmetric key with the recipient's public key
+    // 4. Combine them for transmission
+    
+    // Generate a random symmetric key
+    const symmetricKey = await window.crypto.subtle.generateKey(
+      {
+        name: 'AES-GCM',
+        length: 256
+      },
+      true, // extractable
+      ['encrypt', 'decrypt']
+    );
+    
+    // Generate IV for symmetric encryption
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    
+    // Encrypt the message with the symmetric key
+    const messageBuffer = new TextEncoder().encode(message);
+    const encryptedMessageBuffer = await window.crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv
+      },
+      symmetricKey,
+      messageBuffer
+    );
+    
+    // Export the symmetric key
+    const symmetricKeyBuffer = await window.crypto.subtle.exportKey(
+      'raw',
+      symmetricKey
+    );
+    
+    // Import recipient's public key
+    const publicKeyBuffer = base64ToBuffer(recipientPublicKey);
+    const publicKey = await window.crypto.subtle.importKey(
+      'spki',
+      publicKeyBuffer,
+      {
+        name: 'RSA-OAEP',
+        hash: { name: 'SHA-256' }
+      },
+      false,
+      ['encrypt']
+    );
+    
+    // Encrypt the symmetric key with the recipient's public key
+    const encryptedKeyBuffer = await window.crypto.subtle.encrypt(
+      {
+        name: 'RSA-OAEP'
+      },
+      publicKey,
+      symmetricKeyBuffer
+    );
+    
+    // Combine all parts: iv + encryptedKey length + encryptedKey + encryptedMessage
+    const encryptedKeyLength = new Uint8Array(2);
+    const dataView = new DataView(encryptedKeyLength.buffer);
+    dataView.setUint16(0, encryptedKeyBuffer.byteLength, true);
+    
+    const combinedBuffer = new Uint8Array(
+      iv.length + encryptedKeyLength.length + encryptedKeyBuffer.byteLength + encryptedMessageBuffer.byteLength
+    );
+    
+    let offset = 0;
+    combinedBuffer.set(iv, offset);
+    offset += iv.length;
+    
+    combinedBuffer.set(encryptedKeyLength, offset);
+    offset += encryptedKeyLength.length;
+    
+    combinedBuffer.set(new Uint8Array(encryptedKeyBuffer), offset);
+    offset += encryptedKeyBuffer.byteLength;
+    
+    combinedBuffer.set(new Uint8Array(encryptedMessageBuffer), offset);
+    
+    // Convert to base64 for easy storage and transmission
+    return bufferToBase64(combinedBuffer);
+  } catch (error) {
+    console.error('Error encrypting message:', error);
+    throw new Error('Failed to encrypt message');
+  }
+}
+
+// Decrypt a message received from another user
+export async function decryptMessage(encryptedData: string, privateKeyBase64: string): Promise<string> {
+  try {
+    // Parse the combined encrypted data
+    const combinedBuffer = base64ToBuffer(encryptedData);
+    
+    // Extract parts
+    const iv = combinedBuffer.slice(0, 12);
+    
+    const keyLengthBuffer = combinedBuffer.slice(12, 14);
+    const dataView = new DataView(keyLengthBuffer.buffer);
+    const encryptedKeyLength = dataView.getUint16(0, true);
+    
+    const encryptedKey = combinedBuffer.slice(14, 14 + encryptedKeyLength);
+    const encryptedMessage = combinedBuffer.slice(14 + encryptedKeyLength);
+    
+    // Import the private key
+    const privateKeyBuffer = base64ToBuffer(privateKeyBase64);
+    const privateKey = await window.crypto.subtle.importKey(
+      'pkcs8',
+      privateKeyBuffer,
+      {
+        name: 'RSA-OAEP',
+        hash: { name: 'SHA-256' }
+      },
+      false,
+      ['decrypt']
+    );
+    
+    // Decrypt the symmetric key
+    const symmetricKeyBuffer = await window.crypto.subtle.decrypt(
+      {
+        name: 'RSA-OAEP'
+      },
+      privateKey,
+      encryptedKey
+    );
+    
+    // Import the symmetric key
+    const symmetricKey = await window.crypto.subtle.importKey(
+      'raw',
+      symmetricKeyBuffer,
+      {
+        name: 'AES-GCM',
+        length: 256
+      },
+      false,
+      ['decrypt']
+    );
+    
+    // Decrypt the message
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv
+      },
+      symmetricKey,
+      encryptedMessage
+    );
+    
+    // Convert to string
+    return new TextDecoder().decode(decryptedBuffer);
+  } catch (error) {
+    console.error('Error decrypting message:', error);
+    throw new Error('Failed to decrypt message');
+  }
+}
+
+// Export a unified cryptography service for easier import and use
+export const cryptoService = {
+  generateKeyPair,
+  signMessage,
+  verifySignature,
+  encryptData,
+  decryptData,
+  encryptPrivateKey,
+  decryptPrivateKey,
+  generateDID,
+  generateRandomSeed,
+  createKeyFingerprint,
+  encryptMessage,
+  decryptMessage
+};

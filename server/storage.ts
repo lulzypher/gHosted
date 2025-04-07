@@ -7,12 +7,15 @@ import {
   websiteHosting, type WebsiteHosting, type InsertWebsiteHosting,
   posts, type Post, type InsertPost,
   reactions, type Reaction, type InsertReaction,
-  reactionTypeEnum
+  privateMessages, type PrivateMessage, type InsertPrivateMessage,
+  conversations, type Conversation, type InsertConversation,
+  conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
+  reactionTypeEnum, messageStatusEnum
 } from "@shared/schema";
 
 // Import db for DatabaseStorage
 import { db } from "./db";
-import { eq, desc, and, or, isNull, sql } from "drizzle-orm";
+import { eq, desc, and, or, isNull, sql, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import pg from "pg";
@@ -84,6 +87,29 @@ export interface IStorage {
   getReactionsByPost(postId: number): Promise<Reaction[]>;
   getReactionsByUser(userId: number): Promise<Reaction[]>;
   deleteReaction(id: number): Promise<Reaction>;
+  
+  // Private Message operations
+  createPrivateMessage(message: InsertPrivateMessage): Promise<PrivateMessage>;
+  getPrivateMessage(id: number): Promise<PrivateMessage | undefined>;
+  getPrivateMessagesByConversation(conversationId: string, limit?: number, offset?: number): Promise<PrivateMessage[]>;
+  getPrivateMessagesByUser(userId: number, limit?: number, offset?: number): Promise<PrivateMessage[]>;
+  updateMessageStatus(id: number, status: string): Promise<PrivateMessage>;
+  markMessageAsRead(id: number): Promise<PrivateMessage>;
+  markMessageAsDelivered(id: number): Promise<PrivateMessage>;
+  
+  // Conversation operations
+  createConversation(conversation: InsertConversation): Promise<Conversation>;
+  getConversation(id: number): Promise<Conversation | undefined>;
+  getConversationByConversationId(conversationId: string): Promise<Conversation | undefined>;
+  getUserConversations(userId: number): Promise<(Conversation & {participants: ConversationParticipant[]})[]>;
+  getOrCreateConversation(userId1: number, userId2: number): Promise<Conversation>;
+  updateLastMessageTime(conversationId: string): Promise<Conversation>;
+  
+  // Conversation Participant operations
+  addParticipantToConversation(participant: InsertConversationParticipant): Promise<ConversationParticipant>;
+  getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]>;
+  updateParticipantLastRead(userId: number, conversationId: string): Promise<ConversationParticipant>;
+  removeParticipantFromConversation(userId: number, conversationId: string): Promise<ConversationParticipant>;
   
   // Session store
   sessionStore: session.Store;
@@ -505,6 +531,280 @@ export class DatabaseStorage implements IStorage {
     }
     
     return deletedReaction;
+  }
+
+  // Private Message operations
+  async createPrivateMessage(message: InsertPrivateMessage): Promise<PrivateMessage> {
+    const [newMessage] = await db.insert(privateMessages).values(message).returning();
+    
+    // Update the conversation's last message time
+    await this.updateLastMessageTime(message.conversationId);
+    
+    return newMessage;
+  }
+
+  async getPrivateMessage(id: number): Promise<PrivateMessage | undefined> {
+    const [message] = await db.select().from(privateMessages).where(eq(privateMessages.id, id));
+    return message || undefined;
+  }
+
+  async getPrivateMessagesByConversation(conversationId: string, limit: number = 50, offset: number = 0): Promise<PrivateMessage[]> {
+    return await db.select()
+      .from(privateMessages)
+      .where(eq(privateMessages.conversationId, conversationId))
+      .orderBy(desc(privateMessages.sentAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getPrivateMessagesByUser(userId: number, limit: number = 50, offset: number = 0): Promise<PrivateMessage[]> {
+    return await db.select()
+      .from(privateMessages)
+      .where(or(
+        eq(privateMessages.senderId, userId),
+        eq(privateMessages.recipientId, userId)
+      ))
+      .orderBy(desc(privateMessages.sentAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async updateMessageStatus(id: number, status: string): Promise<PrivateMessage> {
+    // Convert status string to enum value
+    const messageStatus = status as "sent" | "delivered" | "read" | "failed";
+    
+    const [updatedMessage] = await db.update(privateMessages)
+      .set({ status: messageStatus })
+      .where(eq(privateMessages.id, id))
+      .returning();
+    
+    if (!updatedMessage) {
+      throw new Error(`Message with ID ${id} not found`);
+    }
+    
+    return updatedMessage;
+  }
+
+  async markMessageAsRead(id: number): Promise<PrivateMessage> {
+    const now = new Date();
+    const [updatedMessage] = await db.update(privateMessages)
+      .set({ 
+        status: 'read', 
+        readAt: now 
+      })
+      .where(eq(privateMessages.id, id))
+      .returning();
+    
+    if (!updatedMessage) {
+      throw new Error(`Message with ID ${id} not found`);
+    }
+    
+    return updatedMessage;
+  }
+
+  async markMessageAsDelivered(id: number): Promise<PrivateMessage> {
+    const now = new Date();
+    const [updatedMessage] = await db.update(privateMessages)
+      .set({ 
+        status: 'delivered', 
+        deliveredAt: now 
+      })
+      .where(eq(privateMessages.id, id))
+      .returning();
+    
+    if (!updatedMessage) {
+      throw new Error(`Message with ID ${id} not found`);
+    }
+    
+    return updatedMessage;
+  }
+
+  // Conversation operations
+  async createConversation(conversation: InsertConversation): Promise<Conversation> {
+    const [newConversation] = await db.insert(conversations).values(conversation).returning();
+    return newConversation;
+  }
+
+  async getConversation(id: number): Promise<Conversation | undefined> {
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conversation || undefined;
+  }
+
+  async getConversationByConversationId(conversationId: string): Promise<Conversation | undefined> {
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.conversationId, conversationId));
+    return conversation || undefined;
+  }
+
+  async getUserConversations(userId: number): Promise<(Conversation & {participants: ConversationParticipant[]})[]> {
+    // First get all conversation IDs that the user is part of
+    const userParticipations = await db.select()
+      .from(conversationParticipants)
+      .where(and(
+        eq(conversationParticipants.userId, userId),
+        eq(conversationParticipants.hasLeft, false)
+      ));
+    
+    if (userParticipations.length === 0) {
+      return [];
+    }
+    
+    // Extract conversation IDs
+    const conversationIds = userParticipations.map(p => p.conversationId);
+    
+    // Get all conversations with those IDs
+    const userConversations = await db.select()
+      .from(conversations)
+      .where(inArray(conversations.conversationId, conversationIds))
+      .orderBy(desc(conversations.lastMessageAt));
+    
+    // Get all participants for these conversations
+    const allParticipants = await db.select()
+      .from(conversationParticipants)
+      .where(inArray(conversationParticipants.conversationId, conversationIds));
+    
+    // Group participants by conversation
+    const participantsByConversation = allParticipants.reduce((acc, participant) => {
+      if (!acc[participant.conversationId]) {
+        acc[participant.conversationId] = [];
+      }
+      
+      acc[participant.conversationId].push(participant);
+      return acc;
+    }, {} as Record<string, ConversationParticipant[]>);
+    
+    // Combine conversations with their participants
+    return userConversations.map(conversation => ({
+      ...conversation,
+      participants: participantsByConversation[conversation.conversationId] || []
+    }));
+  }
+
+  async getOrCreateConversation(userId1: number, userId2: number): Promise<Conversation> {
+    // Create a deterministic conversation ID based on the sorted user IDs
+    const sortedUserIds = [userId1, userId2].sort((a, b) => a - b);
+    const conversationId = `user_${sortedUserIds[0]}_user_${sortedUserIds[1]}`;
+    
+    // Check if conversation already exists
+    const existingConversation = await this.getConversationByConversationId(conversationId);
+    
+    if (existingConversation) {
+      return existingConversation;
+    }
+    
+    // Create new conversation
+    const newConversation = await this.createConversation({
+      conversationId,
+      isGroup: false,
+      name: null,
+      metadata: null
+    });
+    
+    // Add participants
+    await this.addParticipantToConversation({
+      conversationId,
+      userId: userId1,
+      isAdmin: false
+    });
+    
+    await this.addParticipantToConversation({
+      conversationId,
+      userId: userId2,
+      isAdmin: false
+    });
+    
+    return newConversation;
+  }
+
+  async updateLastMessageTime(conversationId: string): Promise<Conversation> {
+    const now = new Date();
+    const [updatedConversation] = await db.update(conversations)
+      .set({ lastMessageAt: now })
+      .where(eq(conversations.conversationId, conversationId))
+      .returning();
+    
+    if (!updatedConversation) {
+      throw new Error(`Conversation with ID ${conversationId} not found`);
+    }
+    
+    return updatedConversation;
+  }
+
+  // Conversation Participant operations
+  async addParticipantToConversation(participant: InsertConversationParticipant): Promise<ConversationParticipant> {
+    // Check if the participant already exists but has left
+    const existingParticipant = await db.select()
+      .from(conversationParticipants)
+      .where(and(
+        eq(conversationParticipants.conversationId, participant.conversationId),
+        eq(conversationParticipants.userId, participant.userId)
+      ))
+      .limit(1);
+    
+    if (existingParticipant.length > 0) {
+      // Reactivate the participant if they had left
+      if (existingParticipant[0].hasLeft) {
+        const [updatedParticipant] = await db.update(conversationParticipants)
+          .set({ 
+            hasLeft: false,
+            joinedAt: new Date()
+          })
+          .where(eq(conversationParticipants.id, existingParticipant[0].id))
+          .returning();
+        
+        return updatedParticipant;
+      }
+      
+      return existingParticipant[0];
+    }
+    
+    // Add new participant
+    const [newParticipant] = await db.insert(conversationParticipants)
+      .values(participant)
+      .returning();
+    
+    return newParticipant;
+  }
+
+  async getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]> {
+    return await db.select()
+      .from(conversationParticipants)
+      .where(and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.hasLeft, false)
+      ));
+  }
+
+  async updateParticipantLastRead(userId: number, conversationId: string): Promise<ConversationParticipant> {
+    const now = new Date();
+    const [updatedParticipant] = await db.update(conversationParticipants)
+      .set({ lastReadAt: now })
+      .where(and(
+        eq(conversationParticipants.userId, userId),
+        eq(conversationParticipants.conversationId, conversationId)
+      ))
+      .returning();
+    
+    if (!updatedParticipant) {
+      throw new Error(`Participant not found for user ${userId} in conversation ${conversationId}`);
+    }
+    
+    return updatedParticipant;
+  }
+
+  async removeParticipantFromConversation(userId: number, conversationId: string): Promise<ConversationParticipant> {
+    const [updatedParticipant] = await db.update(conversationParticipants)
+      .set({ hasLeft: true })
+      .where(and(
+        eq(conversationParticipants.userId, userId),
+        eq(conversationParticipants.conversationId, conversationId)
+      ))
+      .returning();
+    
+    if (!updatedParticipant) {
+      throw new Error(`Participant not found for user ${userId} in conversation ${conversationId}`);
+    }
+    
+    return updatedParticipant;
   }
 }
 

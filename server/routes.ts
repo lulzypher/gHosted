@@ -9,11 +9,16 @@ import {
   insertNodeConnectionSchema,
   insertPostSchema,
   insertReactionSchema,
+  insertPrivateMessageSchema,
+  insertConversationSchema,
+  insertConversationParticipantSchema,
   contentTypeEnum,
   pinTypeEnum,
   nodeRoleEnum,
   nodeStatusEnum,
-  reactionTypeEnum
+  reactionTypeEnum,
+  messageStatusEnum,
+  encryptionTypeEnum
 } from "@shared/schema";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
@@ -495,56 +500,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // PINNED CONTENT ROUTES
   
-  // Pin content
+  // Pin content (implemented as a reaction)
   app.post("/api/pinned-content", async (req: Request, res: Response) => {
     try {
-      const pinnedData = insertPinnedContentSchema.parse(req.body);
+      // Ensure user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { cid, type } = req.body;
       
-      // Check if already pinned by this user
-      const existingPin = await storage.getPinnedContentByUserAndCID(
-        pinnedData.userId, 
-        pinnedData.contentCid
-      );
-      
-      if (existingPin) {
-        return res.status(400).json({ message: "Content already pinned by this user" });
+      if (!cid) {
+        return res.status(400).json({ message: "Content CID is required" });
       }
       
-      const pinnedContent = await storage.pinContent(pinnedData);
+      // Find the post by CID
+      const post = await storage.getPostByCID(cid);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found with this CID" });
+      }
       
-      // Notify user's connections about new pin
-      broadcastToUser(pinnedData.userId, {
+      // Create reaction data
+      const reactionData = {
+        userId: req.user.id,
+        postId: post.id,
+        reactionType: 'like', // Always 'like' type for now
+        pinToPC: true,        // PC pinning is always enabled
+        pinToMobile: type === 'both' // Mobile pinning depends on the pin type
+      };
+      
+      // Create or update the reaction
+      const reaction = await storage.createReaction(reactionData);
+      
+      // Notify the post owner if different from the person reacting
+      if (post.userId !== req.user.id) {
+        broadcastToUser(post.userId, {
+          type: "NEW_REACTION",
+          data: {
+            ...reaction,
+            username: req.user.username,
+            displayName: req.user.displayName,
+            postContent: post.content.substring(0, 50) + (post.content.length > 50 ? "..." : ""),
+            pinType: type
+          }
+        });
+      }
+      
+      // WebSocket notification to all connected devices of this user
+      // to sync the newly pinned content
+      broadcastToUser(req.user.id, {
         type: "CONTENT_PINNED",
-        data: pinnedContent
+        data: {
+          postId: post.id,
+          cid: post.contentCid,
+          pinToPC: true,
+          pinToMobile: type === 'both'
+        }
       });
       
-      res.status(201).json(pinnedContent);
+      res.status(201).json(reaction);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: fromZodError(error).message });
-      }
-      res.status(500).json({ message: "Server error pinning content" });
+      console.error("Error creating reaction/pin:", error);
+      res.status(500).json({ message: "Server error creating reaction/pin" });
     }
   });
   
-  // Unpin content
+  // Unpin content (by removing reaction)
   app.delete("/api/pinned-content/:id", async (req: Request, res: Response) => {
     try {
-      const pinnedId = parseInt(req.params.id);
-      await storage.unpinContent(pinnedId);
-      res.status(204).send();
+      // Ensure user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const reactionId = parseInt(req.params.id);
+      
+      // Get the reaction before deleting to check ownership
+      const reaction = await storage.getReaction(reactionId);
+      
+      if (!reaction) {
+        return res.status(404).json({ message: "Reaction not found" });
+      }
+      
+      // Ensure user owns this reaction
+      if (reaction.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized to delete this reaction" });
+      }
+      
+      // Delete the reaction (which also handles post stats update)
+      const deletedReaction = await storage.deleteReaction(reactionId);
+      
+      // Notify the user's devices to sync this change
+      broadcastToUser(req.user.id, {
+        type: "CONTENT_UNPINNED",
+        data: {
+          reactionId,
+          postId: reaction.postId
+        }
+      });
+      
+      res.status(200).json({ success: true, message: "Content unpinned" });
     } catch (error) {
+      console.error("Error unpinning content:", error);
       res.status(500).json({ message: "Server error unpinning content" });
     }
   });
   
-  // Get user's pinned content
+  // Get user's pinned content (implemented via reactions)
   app.get("/api/users/:userId/pinned-content", async (req: Request, res: Response) => {
     try {
       const userId = parseInt(req.params.userId);
-      const pinnedContent = await storage.getPinnedContentsByUser(userId);
-      res.status(200).json(pinnedContent);
+      
+      // Get user reactions
+      const userReactions = await storage.getReactionsByUser(userId);
+      
+      // Get posts associated with each reaction
+      const pinnedContent = await Promise.all(
+        userReactions
+          .filter(reaction => reaction.pinToPC || reaction.pinToMobile) // Only include pinned reactions
+          .map(async (reaction) => {
+            const post = await storage.getPost(reaction.postId);
+            if (!post) return null;
+            
+            return {
+              id: reaction.id,
+              userId,
+              contentId: post.id,
+              contentCid: post.contentCid,
+              pinType: reaction.pinToMobile ? 'both' : 'pc',
+              pinnedAt: reaction.createdAt,
+              content: {
+                ...post,
+                userId: post.userId // ensure userId is included
+              }
+            };
+          })
+      );
+      
+      // Filter out nulls (in case any posts were deleted)
+      const validPinnedContent = pinnedContent.filter(Boolean);
+      
+      res.status(200).json(validPinnedContent);
     } catch (error) {
+      console.error("Error fetching pinned content:", error);
       res.status(500).json({ message: "Server error fetching pinned content" });
     }
   });
@@ -1025,6 +1123,293 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting reaction:", error);
       res.status(500).json({ message: "Server error deleting reaction" });
+    }
+  });
+
+  // ENCRYPTED MESSAGING ROUTES
+  
+  // Create or get a conversation between users
+  app.post("/api/conversations", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const { otherUserId } = req.body;
+      
+      if (!otherUserId) {
+        return res.status(400).json({ message: "Missing otherUserId parameter" });
+      }
+      
+      // Convert to number
+      const recipientId = parseInt(otherUserId);
+      
+      // Ensure recipient exists
+      const recipient = await storage.getUser(recipientId);
+      if (!recipient) {
+        return res.status(404).json({ message: "Recipient user not found" });
+      }
+      
+      // Get the current user's ID
+      const userId = req.user.id;
+      
+      // Get or create conversation
+      const conversation = await storage.getOrCreateConversation(userId, recipientId);
+      
+      // Get participants for the conversation (including user info)
+      const participants = await storage.getConversationParticipants(conversation.conversationId);
+      
+      // Get the latest messages
+      const messages = await storage.getPrivateMessagesByConversation(conversation.conversationId, 50, 0);
+      
+      // Return conversation with participants and messages
+      res.status(200).json({
+        ...conversation,
+        participants,
+        messages
+      });
+    } catch (error) {
+      console.error("Error creating/getting conversation:", error);
+      res.status(500).json({ message: "Server error with conversation" });
+    }
+  });
+  
+  // Get user's conversations
+  app.get("/api/conversations", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const userId = req.user.id;
+      
+      // Get conversations with participants
+      const conversations = await storage.getUserConversations(userId);
+      
+      // Get last message for each conversation
+      const conversationsWithLastMessage = await Promise.all(
+        conversations.map(async (conversation) => {
+          const messages = await storage.getPrivateMessagesByConversation(
+            conversation.conversationId, 
+            1, 
+            0
+          );
+          
+          return {
+            ...conversation,
+            lastMessage: messages[0] || null
+          };
+        })
+      );
+      
+      res.status(200).json(conversationsWithLastMessage);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ message: "Server error fetching conversations" });
+    }
+  });
+  
+  // Get conversation by ID with messages
+  app.get("/api/conversations/:conversationId", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const { conversationId } = req.params;
+      const userId = req.user.id;
+      
+      // Get the conversation
+      const conversation = await storage.getConversationByConversationId(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      // Check if user is a participant
+      const participants = await storage.getConversationParticipants(conversationId);
+      const isParticipant = participants.some(p => p.userId === userId);
+      
+      if (!isParticipant) {
+        return res.status(403).json({ message: "Not authorized to view this conversation" });
+      }
+      
+      // Get messages, with pagination
+      const limit = parseInt(req.query.limit as string || '50');
+      const offset = parseInt(req.query.offset as string || '0');
+      const messages = await storage.getPrivateMessagesByConversation(conversationId, limit, offset);
+      
+      // Mark user's messages as read
+      await storage.updateParticipantLastRead(userId, conversationId);
+      
+      // Return conversation with participants and messages
+      res.status(200).json({
+        ...conversation,
+        participants,
+        messages
+      });
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ message: "Server error fetching conversation" });
+    }
+  });
+  
+  // Send an encrypted message
+  app.post("/api/conversations/:conversationId/messages", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const { conversationId } = req.params;
+      const userId = req.user.id;
+      
+      // Validate message data
+      const messageData = insertPrivateMessageSchema.parse({
+        ...req.body,
+        senderId: userId,
+        conversationId
+      });
+      
+      // Ensure conversation exists
+      const conversation = await storage.getConversationByConversationId(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      // Check if user is a participant
+      const participants = await storage.getConversationParticipants(conversationId);
+      const isParticipant = participants.some(p => p.userId === userId);
+      
+      if (!isParticipant) {
+        return res.status(403).json({ message: "Not authorized to post to this conversation" });
+      }
+      
+      // Find the recipient (the other user in the conversation)
+      const recipient = participants.find(p => p.userId !== userId);
+      if (!recipient) {
+        return res.status(400).json({ message: "Could not determine message recipient" });
+      }
+      
+      // Create the message
+      const message = await storage.createPrivateMessage({
+        ...messageData,
+        recipientId: recipient.userId
+      });
+      
+      // Notify the recipient via WebSocket if online
+      broadcastToUser(recipient.userId, {
+        type: "NEW_MESSAGE",
+        data: {
+          message,
+          conversationId
+        }
+      });
+      
+      res.status(201).json(message);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: fromZodError(error).message });
+      }
+      console.error("Error sending message:", error);
+      res.status(500).json({ message: "Server error sending message" });
+    }
+  });
+  
+  // Mark message as read
+  app.put("/api/messages/:id/read", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const messageId = parseInt(req.params.id);
+      const userId = req.user.id;
+      
+      // Get the message
+      const message = await storage.getPrivateMessage(messageId);
+      if (!message) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+      
+      // Check if user is the recipient
+      if (message.recipientId !== userId) {
+        return res.status(403).json({ message: "Not authorized to mark this message as read" });
+      }
+      
+      // Mark as read
+      const updatedMessage = await storage.markMessageAsRead(messageId);
+      
+      // Update participant's last read time
+      await storage.updateParticipantLastRead(userId, message.conversationId);
+      
+      // Notify the sender via WebSocket
+      broadcastToUser(message.senderId, {
+        type: "MESSAGE_READ",
+        data: {
+          messageId,
+          conversationId: message.conversationId
+        }
+      });
+      
+      res.status(200).json(updatedMessage);
+    } catch (error) {
+      console.error("Error marking message as read:", error);
+      res.status(500).json({ message: "Server error marking message as read" });
+    }
+  });
+  
+  // Get user's unread messages count
+  app.get("/api/messages/unread", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const userId = req.user.id;
+      
+      // Get all user conversations
+      const conversations = await storage.getUserConversations(userId);
+      
+      // For each conversation, get unread messages
+      const unreadCounts = await Promise.all(
+        conversations.map(async (conversation) => {
+          const participant = conversation.participants.find(p => p.userId === userId);
+          
+          if (!participant || !participant.lastReadAt) {
+            // If never read, count all messages not sent by the user
+            const allMessages = await storage.getPrivateMessagesByConversation(conversation.conversationId);
+            const unreadCount = allMessages.filter(m => m.recipientId === userId).length;
+            
+            return {
+              conversationId: conversation.conversationId,
+              unreadCount
+            };
+          }
+          
+          // Count messages received after last read
+          const messages = await storage.getPrivateMessagesByConversation(conversation.conversationId);
+          const unreadCount = messages.filter(m => 
+            m.recipientId === userId && 
+            (!participant.lastReadAt || new Date(m.sentAt) > new Date(participant.lastReadAt))
+          ).length;
+          
+          return {
+            conversationId: conversation.conversationId,
+            unreadCount
+          };
+        })
+      );
+      
+      // Calculate total
+      const totalUnread = unreadCounts.reduce((sum, item) => sum + item.unreadCount, 0);
+      
+      res.status(200).json({
+        totalUnread,
+        byConversation: unreadCounts
+      });
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+      res.status(500).json({ message: "Server error fetching unread count" });
     }
   });
 

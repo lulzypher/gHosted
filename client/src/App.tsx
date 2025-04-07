@@ -12,6 +12,7 @@ import { SyncProvider } from '@/contexts/SyncContext';
 import { P2PProvider } from '@/contexts/P2PContext';
 import { ConflictResolution } from '@/components/ConflictResolution';
 import HomePageContent from '@/pages/home-page';
+import MessagingPage from '@/pages/messaging';
 import logoImage from "@assets/logoTransparent1.png";
 
 // Landing page for unauthenticated users
@@ -319,6 +320,7 @@ function App() {
             <PeerDiscoveryProvider>
               <Switch>
                 <ProtectedRoute path="/" component={HomePage} />
+                <ProtectedRoute path="/messages" component={MessagingPage} />
                 <Route path="/auth" component={AuthPage} />
                 <Route path="/about" component={AboutPage} />
                 <Route component={NotFoundPage} />

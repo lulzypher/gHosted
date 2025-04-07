@@ -36,9 +36,11 @@ export function Header() {
         </div>
         
         <div className="flex items-center gap-2">
-          <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
-            <MessageSquare className="h-5 w-5" />
-          </button>
+          <Link href="/messages">
+            <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
+              <MessageSquare className="h-5 w-5" />
+            </button>
+          </Link>
           <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c] relative">
             <Bell className="h-5 w-5" />
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#3499f0] text-[0.65rem] font-medium text-white">

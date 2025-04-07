@@ -9,6 +9,8 @@ export const nodeStatusEnum = pgEnum('node_status', ['online', 'offline', 'synci
 export const pinTypeEnum = pgEnum('pin_type', ['pc', 'mobile', 'both']);
 export const contentTypeEnum = pgEnum('content_type', ['post', 'comment', 'media', 'profile']);
 export const reactionTypeEnum = pgEnum('reaction_type', ['like', 'love', 'save']);
+export const messageStatusEnum = pgEnum('message_status', ['sent', 'delivered', 'read', 'failed']);
+export const encryptionTypeEnum = pgEnum('encryption_type', ['asymmetric', 'symmetric', 'hybrid']);
 
 // User schema with enhanced public key cryptography
 export const users = pgTable("users", {
@@ -358,6 +360,157 @@ export const reactionsRelations = relations(reactions, ({ one }) => ({
   }),
 }));
 
+// Private messages with end-to-end encryption
+export const privateMessages = pgTable("private_messages", {
+  id: serial("id").primaryKey(),
+  // Sender user ID
+  senderId: integer("sender_id").notNull().references(() => users.id),
+  // Recipient user ID
+  recipientId: integer("recipient_id").notNull().references(() => users.id),
+  // Conversation ID (derived from sorted user IDs)
+  conversationId: text("conversation_id").notNull(),
+  // Message content (encrypted)
+  encryptedContent: text("encrypted_content").notNull(),
+  // Encryption details
+  encryptionType: encryptionTypeEnum("encryption_type").notNull(),
+  // Initialization vector used for encryption
+  iv: text("iv").notNull(),
+  // Optional ephemeral key (for hybrid encryption)
+  ephemeralKey: text("ephemeral_key"),
+  // Content CID if stored on IPFS (for large messages/attachments)
+  contentCid: text("content_cid"),
+  // Media content if included
+  mediaCid: text("media_cid"),
+  // Message status
+  status: messageStatusEnum("status").notNull().default('sent'),
+  // Signature for verification
+  signature: text("signature").notNull(),
+  // When message was sent
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+  // When message was delivered
+  deliveredAt: timestamp("delivered_at"),
+  // When message was read
+  readAt: timestamp("read_at"),
+  // Message metadata
+  metadata: jsonb("metadata"),
+  // Indicates if message should be auto-deleted after read
+  isEphemeral: boolean("is_ephemeral").default(false),
+  // Indicates if message is a system message
+  isSystemMessage: boolean("is_system_message").default(false),
+});
+
+export const insertPrivateMessageSchema = createInsertSchema(privateMessages).pick({
+  senderId: true,
+  recipientId: true,
+  conversationId: true,
+  encryptedContent: true,
+  encryptionType: true,
+  iv: true,
+  ephemeralKey: true,
+  contentCid: true,
+  mediaCid: true,
+  signature: true,
+  metadata: true,
+  isEphemeral: true,
+  isSystemMessage: true,
+});
+
+// Conversations for organizing private messages
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  // Unique conversation identifier
+  conversationId: text("conversation_id").notNull().unique(),
+  // Is this a group conversation?
+  isGroup: boolean("is_group").default(false),
+  // Name (for group conversations)
+  name: text("name"),
+  // Last message timestamp
+  lastMessageAt: timestamp("last_message_at").notNull().defaultNow(),
+  // Creation date
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Metadata
+  metadata: jsonb("metadata"),
+});
+
+export const insertConversationSchema = createInsertSchema(conversations).pick({
+  conversationId: true,
+  isGroup: true,
+  name: true,
+  metadata: true,
+});
+
+// Participants in conversations
+export const conversationParticipants = pgTable("conversation_participants", {
+  id: serial("id").primaryKey(),
+  // Conversation ID
+  conversationId: text("conversation_id").notNull().references(() => conversations.conversationId),
+  // User ID
+  userId: integer("user_id").notNull().references(() => users.id),
+  // Has the user left the conversation?
+  hasLeft: boolean("has_left").default(false),
+  // Is admin (for group conversations)
+  isAdmin: boolean("is_admin").default(false),
+  // Last time the user read the conversation
+  lastReadAt: timestamp("last_read_at"),
+  // Joined at timestamp
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    // Ensure unique participants per conversation
+    uniqueParticipant: unique().on(table.conversationId, table.userId),
+  };
+});
+
+export const insertConversationParticipantSchema = createInsertSchema(conversationParticipants).pick({
+  conversationId: true,
+  userId: true,
+  isAdmin: true,
+});
+
+// Relations for private messages
+export const privateMessagesRelations = relations(privateMessages, ({ one }) => ({
+  sender: one(users, {
+    fields: [privateMessages.senderId],
+    references: [users.id],
+  }),
+  recipient: one(users, {
+    fields: [privateMessages.recipientId],
+    references: [users.id],
+  }),
+  conversation: one(conversations, {
+    fields: [privateMessages.conversationId],
+    references: [conversations.conversationId],
+  }),
+}));
+
+// Relations for conversations
+export const conversationsRelations = relations(conversations, ({ many }) => ({
+  messages: many(privateMessages),
+  participants: many(conversationParticipants),
+}));
+
+// Relations for conversation participants
+export const conversationParticipantsRelations = relations(conversationParticipants, ({ one }) => ({
+  user: one(users, {
+    fields: [conversationParticipants.userId],
+    references: [users.id],
+  }),
+  conversation: one(conversations, {
+    fields: [conversationParticipants.conversationId],
+    references: [conversations.conversationId],
+  }),
+}));
+
+// Update user relations to include messages and conversations
+export const usersRelationsExtended = relations(users, ({ many }) => ({
+  nodes: many(nodes),
+  contents: many(contents),
+  pins: many(pins),
+  sentMessages: many(privateMessages, { relationName: "sentMessages" }),
+  receivedMessages: many(privateMessages, { relationName: "receivedMessages" }),
+  conversations: many(conversationParticipants),
+}));
+
 export const websiteHostingRelations = relations(websiteHosting, ({ one }) => ({
   node: one(nodes, {
     fields: [websiteHosting.nodeId],
@@ -389,3 +542,12 @@ export type InsertPost = z.infer<typeof insertPostSchema>;
 
 export type Reaction = typeof reactions.$inferSelect;
 export type InsertReaction = z.infer<typeof insertReactionSchema>;
+
+export type PrivateMessage = typeof privateMessages.$inferSelect;
+export type InsertPrivateMessage = z.infer<typeof insertPrivateMessageSchema>;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+export type InsertConversationParticipant = z.infer<typeof insertConversationParticipantSchema>;
