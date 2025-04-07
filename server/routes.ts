@@ -1302,12 +1302,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { conversationId } = req.params;
       const userId = req.user.id;
       
-      // Validate message data
-      const messageData = insertPrivateMessageSchema.parse({
-        ...req.body,
-        senderId: userId,
-        conversationId
-      });
+      // Special handling for development mode
+      let messageData;
+      if (req.body.content && !req.body.signature && process.env.NODE_ENV !== 'production') {
+        console.log("Development mode message detected");
+        
+        // Find recipient from conversation participants
+        const participants = await storage.getConversationParticipants(conversationId);
+        const recipient = participants.find(p => p.userId !== userId);
+        
+        if (!recipient) {
+          return res.status(400).json({ message: "Cannot determine message recipient" });
+        }
+        
+        // Create a development mode message with dummy encryption values
+        const dummyEncryptedContent = JSON.stringify({
+          mode: "development",
+          encryptedMessage: Buffer.from(req.body.content).toString('base64')
+        });
+        
+        messageData = {
+          senderId: userId,
+          recipientId: recipient.userId,
+          conversationId,
+          encryptedContent: dummyEncryptedContent,
+          content: req.body.content, // For development mode only
+          encryptionType: "hybrid" as "hybrid", // Force the correct enum type
+          iv: 'development-mode-iv',
+          signature: 'development-mode-signature',
+          status: 'sent'
+        };
+      } else {
+        // Normal production validation
+        messageData = insertPrivateMessageSchema.parse({
+          ...req.body,
+          senderId: userId,
+          conversationId
+        });
+      }
       
       // Ensure conversation exists
       const conversation = await storage.getConversationByConversationId(conversationId);

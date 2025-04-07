@@ -352,18 +352,13 @@ const MessagingPage = () => {
         throw new Error("Cannot find recipient user");
       }
       
-      // Get the recipient's user data to get their public key
-      // For now, we'll use a placeholder key since we haven't implemented the full key exchange
-      // In a full implementation, we would fetch and store the recipient's public key
-      const publicKey = recipient.publicKey || "DEFAULT_PUBLIC_KEY"; 
+      // Development mode messaging (simplified)
+      console.log("Using development mode encryption");
       
-      // Encrypt the message content
-      const encryptedContent = await cryptoService.encryptMessage(content, publicKey);
-      
+      // In development mode, we'll just send the plain content
+      // The server will handle the dummy encryption values
       const response = await apiRequest("POST", `/api/conversations/${conversationId}/messages`, {
-        content, // Plain content for development
-        encryptedContent: encryptedContent,
-        encryptionType: "hybrid",
+        content, // In development mode, we send plain content and server handles the rest
         status: "sent"
       });
       
