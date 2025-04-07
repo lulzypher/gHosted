@@ -193,7 +193,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
   onSelect: (conversation: Conversation) => void,
   currentUserId?: number
 }) => {
-  if (conversations.length === 0) {
+  if (!conversations || conversations.length === 0) {
     return (
       <div className="p-4 text-center text-muted-foreground">
         <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -206,9 +206,21 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
   return (
     <div className="space-y-2">
       {conversations.map((conversation) => {
+        // Make sure participants exists and is an array
+        if (!conversation.participants || !Array.isArray(conversation.participants)) {
+          console.error("Invalid conversation format:", conversation);
+          return null;
+        }
+
         // Find the other participant (not the current user)
-        const otherParticipant = conversation.participants.find(p => p.userId !== currentUserId) || conversation.participants[0];
+        const otherParticipant = conversation.participants.find(p => p.userId !== currentUserId) || 
+          (conversation.participants.length > 0 ? conversation.participants[0] : null);
         
+        if (!otherParticipant) {
+          console.error("Could not find conversation participant", conversation);
+          return null;
+        }
+
         return (
           <div
             key={conversation.conversationId}
@@ -221,13 +233,17 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
           >
             <Avatar className="h-10 w-10 mr-3">
               <AvatarImage src={otherParticipant.avatarCid ? `https://ipfs.io/ipfs/${otherParticipant.avatarCid}` : ""} />
-              <AvatarFallback>{otherParticipant.displayName?.charAt(0) || otherParticipant.username?.charAt(0)}</AvatarFallback>
+              <AvatarFallback>
+                {otherParticipant.displayName?.charAt(0) || 
+                 otherParticipant.username?.charAt(0) || 
+                 '?'}
+              </AvatarFallback>
             </Avatar>
             
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center">
                 <p className="font-medium truncate">
-                  {otherParticipant.displayName || otherParticipant.username}
+                  {otherParticipant.displayName || otherParticipant.username || "Unknown User"}
                 </p>
                 {conversation.lastMessage && (
                   <p className="text-xs text-muted-foreground">
@@ -241,7 +257,8 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
                   ? (
                     <>
                       <span className="font-medium mr-1">
-                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : `${otherParticipant.username}:`}
+                        {conversation.lastMessage.senderId === currentUserId ? 'You:' : 
+                          `${otherParticipant.username || 'User'}:`}
                       </span>
                       {getMessagePreview(conversation.lastMessage)}
                     </>
@@ -541,7 +558,7 @@ const MessagingPage = () => {
   // Find the other participant (not the current user)
   const otherParticipant = activeConversationData?.participants?.find(
     (p: ConversationParticipant) => p.userId !== user?.id
-  );
+  ) || (activeConversationData?.participants?.length ? activeConversationData?.participants[0] : null);
 
   return (
     <div className="container mx-auto py-6 max-w-7xl">
@@ -640,17 +657,24 @@ const MessagingPage = () => {
                   <div className="text-center text-muted-foreground py-4">
                     <p>Loading messages...</p>
                   </div>
-                ) : activeConversationData?.messages?.length ? (
+                ) : activeConversationData?.messages && activeConversationData.messages.length > 0 ? (
                   <div className="space-y-4">
                     {/* Sort messages by timestamp, oldest first */}
-                    {[...activeConversationData.messages]
+                    {[...(activeConversationData.messages || [])]
                       .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime())
                       .map((message: PrivateMessage) => (
                         <MessageBubble 
                           key={message.id} 
                           message={message} 
                           isCurrentUser={message.senderId === user?.id}
-                          otherUser={otherParticipant!}
+                          otherUser={otherParticipant || {
+                            userId: 0,
+                            conversationId: activeConversation.conversationId,
+                            joinedAt: new Date().toISOString(),
+                            lastReadAt: null,
+                            username: "Unknown",
+                            displayName: "Unknown User"
+                          }}
                         />
                       ))
                     }
@@ -661,8 +685,8 @@ const MessagingPage = () => {
                     <Lock className="h-12 w-12 mx-auto mb-4 opacity-20" />
                     <p className="text-lg font-medium">End-to-end Encrypted Chat</p>
                     <p className="text-sm max-w-md mx-auto mt-2">
-                      Messages are encrypted using advanced cryptography. Only you and 
-                      {otherParticipant?.displayName || otherParticipant?.username} can read them.
+                      Messages are encrypted using advanced cryptography. Only you and {' '}
+                      {otherParticipant?.displayName || otherParticipant?.username || 'the other user'} can read them.
                     </p>
                   </div>
                 )}
