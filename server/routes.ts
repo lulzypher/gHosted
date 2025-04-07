@@ -393,6 +393,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Search users for messaging
+  app.get("/api/users/search", async (req: Request, res: Response) => {
+    try {
+      const query = req.query.q as string;
+      
+      if (!query || query.length < 2) {
+        return res.status(200).json([]);
+      }
+      
+      // Get all users from database
+      const allUsers = await storage.getAllUsers();
+      
+      // Filter users based on query (username or displayName)
+      const filteredUsers = allUsers.filter(user => {
+        const username = user.username.toLowerCase();
+        const displayName = (user.displayName || "").toLowerCase();
+        const searchTerm = query.toLowerCase();
+        
+        return username.includes(searchTerm) || displayName.includes(searchTerm);
+      });
+      
+      // Don't return the current user in search results
+      const currentUserId = req.user?.id;
+      const results = filteredUsers
+        .filter(user => user.id !== currentUserId)
+        .map(user => ({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatarCid: user.avatarCid
+        }));
+      
+      res.status(200).json(results);
+    } catch (error) {
+      console.error("Error searching users:", error);
+      res.status(500).json({ message: "Server error fetching user" });
+    }
+  });
+  
   // POST ROUTES
   
   // Create a post
