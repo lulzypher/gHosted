@@ -640,7 +640,7 @@ export class DatabaseStorage implements IStorage {
     return conversation || undefined;
   }
 
-  async getUserConversations(userId: number): Promise<(Conversation & {participants: ConversationParticipant[]})[]> {
+  async getUserConversations(userId: number): Promise<(Conversation & {participants: any[]})[]> {
     // First get all conversation IDs that the user is part of
     const userParticipations = await db.select()
       .from(conversationParticipants)
@@ -662,20 +662,32 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(conversations.conversationId, conversationIds))
       .orderBy(desc(conversations.lastMessageAt));
     
-    // Get all participants for these conversations
-    const allParticipants = await db.select()
+    // Get all participants for these conversations with user information
+    const allParticipants = await db
+      .select({
+        id: conversationParticipants.id,
+        userId: conversationParticipants.userId,
+        conversationId: conversationParticipants.conversationId,
+        hasLeft: conversationParticipants.hasLeft,
+        isAdmin: conversationParticipants.isAdmin,
+        lastReadAt: conversationParticipants.lastReadAt,
+        joinedAt: conversationParticipants.joinedAt,
+        displayName: users.displayName,
+        username: users.username,
+        avatarCid: users.avatarCid
+      })
       .from(conversationParticipants)
+      .leftJoin(users, eq(conversationParticipants.userId, users.id))
       .where(inArray(conversationParticipants.conversationId, conversationIds));
     
     // Group participants by conversation
-    const participantsByConversation = allParticipants.reduce((acc, participant) => {
-      if (!acc[participant.conversationId]) {
-        acc[participant.conversationId] = [];
+    const participantsByConversation: Record<string, any[]> = {};
+    for (const participant of allParticipants) {
+      if (!participantsByConversation[participant.conversationId]) {
+        participantsByConversation[participant.conversationId] = [];
       }
-      
-      acc[participant.conversationId].push(participant);
-      return acc;
-    }, {} as Record<string, ConversationParticipant[]>);
+      participantsByConversation[participant.conversationId].push(participant);
+    }
     
     // Combine conversations with their participants
     return userConversations.map(conversation => ({
@@ -770,9 +782,22 @@ export class DatabaseStorage implements IStorage {
     return newParticipant;
   }
 
-  async getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]> {
-    return await db.select()
+  async getConversationParticipants(conversationId: string): Promise<any[]> {
+    return await db
+      .select({
+        id: conversationParticipants.id,
+        userId: conversationParticipants.userId,
+        conversationId: conversationParticipants.conversationId,
+        hasLeft: conversationParticipants.hasLeft,
+        isAdmin: conversationParticipants.isAdmin,
+        lastReadAt: conversationParticipants.lastReadAt,
+        joinedAt: conversationParticipants.joinedAt,
+        displayName: users.displayName,
+        username: users.username,
+        avatarCid: users.avatarCid
+      })
       .from(conversationParticipants)
+      .leftJoin(users, eq(conversationParticipants.userId, users.id))
       .where(and(
         eq(conversationParticipants.conversationId, conversationId),
         eq(conversationParticipants.hasLeft, false)
