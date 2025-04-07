@@ -3,6 +3,34 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+
+// Helper function to get decrypted message content for display
+const getMessageContent = (message: PrivateMessage) => {
+  // If we already have plain content (development mode)
+  if (message.content) {
+    return message.content;
+  }
+  
+  // Try to extract the message from the development mode encrypted content
+  if (message.encryptedContent && message.encryptedContent.startsWith('{')) {
+    try {
+      const jsonData = JSON.parse(message.encryptedContent);
+      if (jsonData.mode === 'development') {
+        return atob(jsonData.encryptedMessage);
+      }
+    } catch (error) {
+      console.error("Error parsing development mode message", error);
+    }
+  }
+  
+  // Fallback
+  return "[ Encrypted message ]";
+};
+
+// Helper function to get message preview for conversation list
+const getMessagePreview = (message: PrivateMessage) => {
+  return getMessageContent(message);
+};
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -145,7 +173,7 @@ const MessageBubble = ({ message, isCurrentUser, otherUser }: { message: Private
         )}
         
         <div className={`px-4 py-2 rounded-lg ${isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-          <div className="text-sm">{message.content}</div>
+          <div className="text-sm">{getMessageContent(message)}</div>
         </div>
         
         {isCurrentUser && (
@@ -208,7 +236,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect }: {
               
               <p className="text-sm truncate text-muted-foreground">
                 {conversation.lastMessage 
-                  ? conversation.lastMessage.content 
+                  ? getMessagePreview(conversation.lastMessage)
                   : "No messages yet"}
               </p>
             </div>
