@@ -1,0 +1,227 @@
+/**
+ * IPFS client wrapper for the application
+ * This version uses only browser-compatible implementations
+ */
+
+import { IPFSStats } from '@/types';
+import { 
+  BrowserIPFSClient, 
+  initBrowserIPFS, 
+  addToBrowserIPFS,
+  getFromBrowserIPFS,
+  pinToBrowserIPFS,
+  unpinFromBrowserIPFS,
+  getPinnedBrowserContent,
+  getBrowserIPFSStats
+} from './browserIPFS';
+import { createMockIPFSClient, MockIPFSClient, getMockIPFSStats } from './mockIPFS';
+
+// Configuration values
+const CONNECTION_TIMEOUT = 15000; // 15 seconds timeout
+let ipfs: BrowserIPFSClient | MockIPFSClient | null = null;
+let usingMockIPFS = false;
+let isConnecting = false;
+
+// Initialize IPFS with browser implementation or mock as fallback
+export const initIPFS = async (): Promise<BrowserIPFSClient | MockIPFSClient> => {
+  try {
+    // Prevent multiple initialization attempts
+    if (isConnecting) {
+      throw new Error('IPFS connection attempt already in progress');
+    }
+    
+    isConnecting = true;
+    
+    // Check if we've previously decided to use mock IPFS
+    if (typeof window !== 'undefined' && window.localStorage && 
+        window.localStorage.getItem('use-mock-ipfs') === 'true') {
+      console.log('Using mock IPFS implementation from localStorage preference');
+      ipfs = createMockIPFSClient();
+      usingMockIPFS = true;
+      isConnecting = false;
+      return ipfs;
+    }
+    
+    console.log('Attempting to connect to IPFS via browser client...');
+    
+    try {
+      // Try to initialize the browser IPFS implementation
+      ipfs = await initBrowserIPFS();
+      
+      // Test the connection
+      const versionInfo = await ipfs.version();
+      console.log('Connected to IPFS. Version:', versionInfo.version);
+      
+      usingMockIPFS = false;
+      isConnecting = false;
+      return ipfs;
+    } catch (browserError) {
+      console.warn('Could not initialize browser IPFS client:', browserError);
+      
+      // Fall back to mock implementation
+      console.log('Creating mock IPFS client as fallback');
+      ipfs = createMockIPFSClient();
+      usingMockIPFS = true;
+      isConnecting = false;
+      
+      // Save preference for future page loads
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('use-mock-ipfs', 'true');
+      }
+      
+      return ipfs;
+    }
+  } catch (error) {
+    isConnecting = false;
+    console.error('Failed to initialize IPFS:', error);
+    
+    // Last resort: create mock client
+    ipfs = createMockIPFSClient();
+    usingMockIPFS = true;
+    
+    return ipfs;
+  }
+};
+
+// Check if we're using the mock IPFS implementation
+export const isUsingMockIPFS = (): boolean => {
+  return usingMockIPFS;
+};
+
+// Get the IPFS instance, initializing if needed
+export const getIPFS = async (): Promise<BrowserIPFSClient | MockIPFSClient> => {
+  if (!ipfs) {
+    return initIPFS();
+  }
+  return ipfs;
+};
+
+// Add content to IPFS
+export const addToIPFS = async (content: string | Blob): Promise<string> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      return (await (ipfsInstance as MockIPFSClient).add(content)).cid.toString();
+    } else {
+      return addToBrowserIPFS(ipfsInstance as BrowserIPFSClient, content);
+    }
+  } catch (error) {
+    console.error('Error adding content to IPFS:', error);
+    throw error;
+  }
+};
+
+// Get content from IPFS by CID
+export const getFromIPFS = async (cid: string): Promise<Uint8Array> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      const mockInstance = ipfsInstance as MockIPFSClient;
+      const chunks = [];
+      for await (const chunk of mockInstance.cat(cid)) {
+        chunks.push(chunk);
+      }
+      
+      // Combine chunks
+      let totalLength = 0;
+      for (const chunk of chunks) {
+        totalLength += chunk.length;
+      }
+      
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+      
+      return result;
+    } else {
+      return getFromBrowserIPFS(ipfsInstance as BrowserIPFSClient, cid);
+    }
+  } catch (error) {
+    console.error(`Error getting content from IPFS (CID: ${cid}):`, error);
+    throw error;
+  }
+};
+
+// Pin content to the local IPFS node
+export const pinToIPFS = async (cid: string): Promise<void> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      await (ipfsInstance as MockIPFSClient).pin.add(cid);
+    } else {
+      await pinToBrowserIPFS(ipfsInstance as BrowserIPFSClient, cid);
+    }
+  } catch (error) {
+    console.error(`Error pinning content to IPFS (CID: ${cid}):`, error);
+    throw error;
+  }
+};
+
+// Unpin content from the local IPFS node
+export const unpinFromIPFS = async (cid: string): Promise<void> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      await (ipfsInstance as MockIPFSClient).pin.rm(cid);
+    } else {
+      await unpinFromBrowserIPFS(ipfsInstance as BrowserIPFSClient, cid);
+    }
+  } catch (error) {
+    console.error(`Error unpinning content from IPFS (CID: ${cid}):`, error);
+    throw error;
+  }
+};
+
+// Get list of pinned content
+export const getPinnedContent = async (): Promise<string[]> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      const pins = [];
+      for await (const pin of (ipfsInstance as MockIPFSClient).pin.ls()) {
+        pins.push(pin.cid.toString());
+      }
+      return pins;
+    } else {
+      return getPinnedBrowserContent(ipfsInstance as BrowserIPFSClient);
+    }
+  } catch (error) {
+    console.error('Error getting pinned content from IPFS:', error);
+    return []; // Return empty array instead of throwing
+  }
+};
+
+// Get IPFS stats
+export const getIPFSStats = async (): Promise<IPFSStats> => {
+  try {
+    const ipfsInstance = await getIPFS();
+    
+    if (usingMockIPFS) {
+      return getMockIPFSStats(ipfsInstance as MockIPFSClient);
+    } else {
+      return getBrowserIPFSStats(ipfsInstance as BrowserIPFSClient);
+    }
+  } catch (error) {
+    console.error('Error getting IPFS stats:', error);
+    
+    // Return default stats if we encounter an error
+    return {
+      pinnedCount: 0,
+      numPins: 0,
+      repoSize: 0,
+      totalSize: 0,
+      numObjects: 0,
+      storageMax: 1073741824, // 1GB
+      allocatedSize: 1073741824,
+      peersConnected: 0
+    };
+  }
+};
