@@ -58,10 +58,11 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     
-    // Make sure we use the correct path that matches the server
+    // Use the simplified path that matches the server configuration
     // Add a unique connection ID to prevent connection conflicts
     const connectionId = Math.random().toString(36).substring(2, 15);
-    const wsUrl = `${protocol}//${host}/api/ws?userId=${user.id}&connectionId=${connectionId}`;
+    // Use the correct path from the server - server is configured with path: '/ws'
+    const wsUrl = `${protocol}//${host}/ws?userId=${user.id}&connectionId=${connectionId}`;
     
     console.log('Attempting to connect to WebSocket at:', wsUrl);
     

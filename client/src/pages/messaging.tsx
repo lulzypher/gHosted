@@ -448,11 +448,63 @@ const MessagingPage = () => {
       return await response.json();
     },
     onSuccess: (data) => {
-      // Update conversations cache
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations", activeConversation?.conversationId] });
+      // Optimistically update the UI for better real-time experience
       
-      // Clear the input
+      // 1. Update the active conversation with the new message
+      if (activeConversation) {
+        const currentConversationData = queryClient.getQueryData<Conversation>(
+          ["/api/conversations", activeConversation.conversationId]
+        );
+        
+        if (currentConversationData) {
+          // Add the new message to the messages array
+          const updatedData = {
+            ...currentConversationData,
+            messages: [...(currentConversationData.messages || []), data],
+            lastMessage: data
+          };
+          
+          // Update the cache directly
+          queryClient.setQueryData(
+            ["/api/conversations", activeConversation.conversationId],
+            updatedData
+          );
+        } else {
+          // Fallback to invalidation if no data in cache
+          queryClient.invalidateQueries({ 
+            queryKey: ["/api/conversations", activeConversation.conversationId] 
+          });
+        }
+      }
+      
+      // 2. Update the conversations list to show the new message
+      const currentConversations = queryClient.getQueryData<Conversation[]>(["/api/conversations"]);
+      if (currentConversations && activeConversation) {
+        const updatedConversations = [...currentConversations];
+        const conversationIndex = updatedConversations.findIndex(
+          (c) => c.conversationId === activeConversation.conversationId
+        );
+        
+        if (conversationIndex >= 0) {
+          // Update the conversation with the new message
+          updatedConversations[conversationIndex] = {
+            ...updatedConversations[conversationIndex],
+            lastMessage: data,
+          };
+          
+          // Move this conversation to the top of the list
+          const movedConversation = updatedConversations.splice(conversationIndex, 1)[0];
+          updatedConversations.unshift(movedConversation);
+          
+          // Update the cache
+          queryClient.setQueryData(["/api/conversations"], updatedConversations);
+        } else {
+          // Fallback to invalidation if conversation not found
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        }
+      }
+      
+      // Clear the input field
       setNewMessage("");
     },
     onError: (error: Error) => {
@@ -515,17 +567,67 @@ const MessagingPage = () => {
         if (data.type === "NEW_MESSAGE" && data.data?.message) {
           console.log("Received real-time message:", data);
           
-          // Invalidate queries to refresh conversation data
-          queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+          // Improve real-time updates - instead of just invalidating, we'll update the cache
+          // This gives a more responsive feel as the UI updates instantly
           
-          // If this message is for the active conversation, also update that
-          if (activeConversation && data.data.message.conversationId === activeConversation.conversationId) {
-            queryClient.invalidateQueries({ 
-              queryKey: ["/api/conversations", activeConversation.conversationId] 
-            });
+          // 1. First, update the conversation list to show the new message preview
+          const currentConversations = queryClient.getQueryData<Conversation[]>(["/api/conversations"]);
+          if (currentConversations) {
+            const updatedConversations = [...currentConversations];
+            const conversationIndex = updatedConversations.findIndex(
+              (c) => c.conversationId === data.data.message.conversationId
+            );
+            
+            if (conversationIndex >= 0) {
+              // Update the conversation with the new message
+              updatedConversations[conversationIndex] = {
+                ...updatedConversations[conversationIndex],
+                lastMessage: data.data.message,
+              };
+              
+              // Move this conversation to the top of the list
+              const movedConversation = updatedConversations.splice(conversationIndex, 1)[0];
+              updatedConversations.unshift(movedConversation);
+              
+              // Update the cache
+              queryClient.setQueryData(["/api/conversations"], updatedConversations);
+            }
+          } else {
+            // If no conversations in cache, just invalidate
+            queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
           }
           
-          // Show a toast notification for new messages if not in the current conversation
+          // 2. If this message is for the active conversation, update the messages list
+          if (activeConversation && data.data.message.conversationId === activeConversation.conversationId) {
+            const currentConversationData = queryClient.getQueryData<Conversation>(
+              ["/api/conversations", activeConversation.conversationId]
+            );
+            
+            if (currentConversationData) {
+              const updatedData = {
+                ...currentConversationData,
+                messages: [...(currentConversationData.messages || []), data.data.message],
+                lastMessage: data.data.message
+              };
+              
+              queryClient.setQueryData(
+                ["/api/conversations", activeConversation.conversationId],
+                updatedData
+              );
+              
+              // Mark the message as read if the user is viewing this conversation
+              if (data.data.message.recipientId === user?.id && data.data.message.status !== "read") {
+                markAsReadMutation.mutate({ messageId: data.data.message.id });
+              }
+            } else {
+              // If not in cache, trigger a refetch
+              queryClient.invalidateQueries({ 
+                queryKey: ["/api/conversations", activeConversation.conversationId] 
+              });
+            }
+          }
+          
+          // 3. Show a toast notification for new messages if not in the current conversation
           if (data.data.message.conversationId !== activeConversation?.conversationId) {
             // Find the sender's info from conversations
             const senderConversation = conversations?.find((c: Conversation) => 
@@ -556,7 +658,7 @@ const MessagingPage = () => {
     
     // Clean up on unmount
     return unsubscribe;
-  }, [user, queryClient, activeConversation, addMessageListener, toast, conversations]);
+  }, [user, queryClient, activeConversation, addMessageListener, toast, conversations, markAsReadMutation]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

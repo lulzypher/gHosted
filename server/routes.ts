@@ -47,13 +47,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Use a specific path to avoid conflicts with Vite's WebSocket
   const wss = new WebSocketServer({ 
     server: httpServer,
-    path: '/api/ws',
-    // Add the following options to make the connection more reliable
+    path: '/ws', // Simplified path to avoid conflicts with Vite's HMR
     clientTracking: true,
     perMessageDeflate: false,
-    // Allow 5 minutes for connection timeout
-    maxPayload: 50 * 1024 * 1024, // 50MB max payload
-    // Set generous timeouts to avoid premature termination
+    maxPayload: 5 * 1024 * 1024, // 5MB max payload - more reasonable limit
     verifyClient: (info, cb) => {
       // Always accept connections, but log them
       console.log("WebSocket connection verification from:", info.req.headers['x-forwarded-for'] || info.req.socket.remoteAddress);
@@ -61,7 +58,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  console.log("WebSocket server created and listening on path /api/ws");
+  console.log("WebSocket server created and listening on path /ws");
   
   // Heartbeat mechanism to detect and clean up dead connections
   function heartbeat(this: WebSocket) {
