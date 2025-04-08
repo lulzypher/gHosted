@@ -15,6 +15,7 @@ export enum SyncStatus {
 // Pin type enumeration
 export enum PinType {
   LOCAL = 'local',    // Pin to local device only (Heart reaction ❤️)
+  LIKE = 'like',      // Alias for LOCAL - used for consistency with UI
   REMOTE = 'remote',  // Pin to remote devices as well (Fire Heart reaction ❤️‍🔥)
   LOVE = 'love',      // The love-heart-fire reaction (alias for REMOTE)
   ALL = 'all'         // Matches any type for querying purposes
@@ -84,6 +85,14 @@ export interface PinnedContent {
   pinType: PinType;
   deviceId?: number;
   pinnedAt: Date;
+  // Associated post data that may be populated from the server or client
+  post?: {
+    content?: string;
+    imageCid?: string;
+    title?: string;
+    metadata?: Record<string, any>;
+    createdAt?: Date;
+  };
 }
 
 // Peer connection interface

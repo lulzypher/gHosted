@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
 import { useIPFS } from '@/contexts/IPFSContext';
-import Header from '@/components/Header';
-import LeftSidebar from '@/components/LeftSidebar';
+import { Header } from '@/components/Header';
+import { LeftSidebar } from '@/components/LeftSidebar';
 import MobileNavigation from '@/components/MobileNavigation';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -15,7 +15,8 @@ import {
   Image as ImageIcon, 
   RefreshCw, 
   Search,
-  Smartphone
+  Smartphone,
+  Heart
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { PinType, PinnedContent } from '@/types';
@@ -28,63 +29,107 @@ const StorageItemCard: React.FC<{
   const formattedDate = item.pinnedAt 
     ? formatDistanceToNow(new Date(item.pinnedAt), { addSuffix: true })
     : 'Unknown time';
+    
+  // Determine the pin type color and icon
+  const getPinTypeDisplay = () => {
+    switch (item.pinType) {
+      case PinType.LOVE:
+      case PinType.REMOTE:
+        return {
+          bgColor: "bg-orange-100 dark:bg-orange-900/20",
+          textColor: "text-orange-700 dark:text-orange-400",
+          borderColor: "border-orange-200 dark:border-orange-800",
+          label: "All Devices",
+          icon: (
+            <div className="flex items-center">
+              <HardDrive className="h-3 w-3 mr-0.5" />
+              <Smartphone className="h-3 w-3" />
+            </div>
+          )
+        };
+      case PinType.LOCAL:
+        return {
+          bgColor: "bg-red-100 dark:bg-red-900/20",
+          textColor: "text-red-700 dark:text-red-400",
+          borderColor: "border-red-200 dark:border-red-800",
+          label: "PC Only",
+          icon: <HardDrive className="h-3 w-3" />
+        };
+      default:
+        return {
+          bgColor: "bg-blue-100 dark:bg-blue-900/20",
+          textColor: "text-blue-700 dark:text-blue-400",
+          borderColor: "border-blue-200 dark:border-blue-800",
+          label: "Unknown",
+          icon: <FileText className="h-3 w-3" />
+        };
+    }
+  };
+  
+  const pinTypeDisplay = getPinTypeDisplay();
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-3 flex items-center justify-between">
-      <div className="flex items-center space-x-3">
-        <div className="h-10 w-10 flex-shrink-0 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-          {item.post?.imageCid ? (
-            <img 
-              src={`https://ipfs.io/ipfs/${item.post.imageCid}`}
-              alt="Content thumbnail"
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <FileText className="h-5 w-5 text-gray-400" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center space-x-2">
-            <span className="font-medium text-sm truncate max-w-[200px]">
-              {item.post?.content?.substring(0, 50) || 'Pinned content'}
-              {item.post?.content?.length > 50 ? '...' : ''}
-            </span>
-            <div className="flex items-center text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-              {item.pinType === PinType.LOVE ? (
-                <div className="flex items-center">
-                  <HardDrive className="h-3 w-3 mr-0.5" />
-                  <Smartphone className="h-3 w-3" />
-                </div>
-              ) : (
-                <HardDrive className="h-3 w-3" />
-              )}
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border-l-4 ${pinTypeDisplay.borderColor} transition-all hover:shadow-md`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-start space-x-3 flex-1">
+          <div className="h-12 w-12 flex-shrink-0 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+            {item.post?.imageCid ? (
+              <img 
+                src={`https://ipfs.io/ipfs/${item.post.imageCid}`}
+                alt="Content thumbnail"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <FileText className="h-6 w-6 text-gray-400" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full">
+              <span className="font-medium text-sm truncate max-w-[200px] dark:text-white">
+                {item.post?.content ? (
+                  <>
+                    {item.post.content.substring(0, 50)}
+                    {(item.post.content.length || 0) > 50 ? '...' : ''}
+                  </>
+                ) : (
+                  'Pinned content'
+                )}
+              </span>
+              <div className={`flex items-center text-xs px-2 py-1 rounded mt-1 sm:mt-0 ${pinTypeDisplay.bgColor} ${pinTypeDisplay.textColor}`}>
+                {pinTypeDisplay.icon}
+                <span className="ml-1">{pinTypeDisplay.label}</span>
+              </div>
+            </div>
+            <div className="flex items-center mt-1 space-x-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>{formattedDate}</span>
+              <span>•</span>
+              <div className="flex items-center">
+                <span className="font-mono truncate max-w-[120px]" title={item.contentCid}>
+                  {item.contentCid.substring(0, 10)}...{item.contentCid.substring(item.contentCid.length - 4)}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2 text-xs text-gray-500">
-            <span>{formattedDate}</span>
-            <span>•</span>
-            <span className="text-accent truncate max-w-[100px]">{item.contentCid.substring(0, 10)}...</span>
-          </div>
         </div>
-      </div>
-      <div className="flex space-x-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-blue-500 hover:text-blue-700 p-1 h-7 w-7"
-          title="Download"
-        >
-          <Download className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-red-500 hover:text-red-700 p-1 h-7 w-7"
-          title="Remove"
-          onClick={() => onDelete(item.id, item.contentCid)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex space-x-1 ml-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/20 p-1 h-8 w-8 rounded-full"
+            title="Download Content"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20 p-1 h-8 w-8 rounded-full"
+            title="Remove Content"
+            onClick={() => onDelete(item.id, item.contentCid)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -94,6 +139,13 @@ const Storage: React.FC = () => {
   const { user, isLoading: isUserLoading } = useUser();
   const { pinnedContents, stats, refreshPinnedContents, unpinContent } = useIPFS();
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Handler function for search input change
+  const handleSearchChange = (e: any) => {
+    if (e && e.target && typeof e.target.value === 'string') {
+      setSearchTerm(e.target.value);
+    }
+  };
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // If user is not logged in, show login page
@@ -111,10 +163,13 @@ const Storage: React.FC = () => {
   const lovedContents = filteredContents.filter(content => content.pinType === PinType.LOVE);
   const likedContents = filteredContents.filter(content => content.pinType === PinType.LIKE);
 
-  // Storage usage calculations
-  const usedStorageMB = (stats.totalSize / (1024 * 1024)).toFixed(0);
-  const allocatedStorageGB = (stats.allocatedSize / (1024 * 1024 * 1024)).toFixed(1);
-  const usedStoragePercentage = (stats.totalSize / stats.allocatedSize) * 100;
+  // Storage usage calculations with safe defaults
+  const totalSize = stats?.totalSize || 0;
+  const allocatedSize = stats?.allocatedSize || 1024 * 1024 * 1024; // Default 1GB if not provided
+  
+  const usedStorageMB = (totalSize / (1024 * 1024)).toFixed(0);
+  const allocatedStorageGB = (allocatedSize / (1024 * 1024 * 1024)).toFixed(1);
+  const usedStoragePercentage = Math.min((totalSize / allocatedSize) * 100, 100); // Cap at 100%
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -156,16 +211,102 @@ const Storage: React.FC = () => {
               </Button>
             </div>
             
-            {/* Storage Stats */}
+            {/* Storage Stats Dashboard */}
             <div className="mb-6">
-              <div className="flex justify-between mb-1 text-sm">
-                <span>Storage Usage</span>
-                <span className="font-medium">{usedStorageMB} MB / {allocatedStorageGB} GB</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Storage Usage Card */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center">
+                    <HardDrive className="h-4 w-4 mr-1 text-blue-500" />
+                    Storage Usage
+                  </h3>
+                  
+                  <div className="flex justify-between mb-1 text-sm">
+                    <span className="text-gray-600 dark:text-gray-300">Used Space</span>
+                    <span className="font-medium">{usedStorageMB} MB / {allocatedStorageGB} GB</span>
+                  </div>
+                  
+                  <div className="relative pt-1">
+                    <Progress 
+                      value={usedStoragePercentage} 
+                      className="h-2.5 rounded-full" 
+                      // Change color based on usage
+                      style={{
+                        backgroundColor: usedStoragePercentage > 80 
+                          ? 'rgba(239, 68, 68, 0.2)' 
+                          : usedStoragePercentage > 60 
+                            ? 'rgba(245, 158, 11, 0.2)' 
+                            : 'rgba(59, 130, 246, 0.2)',
+                        color: usedStoragePercentage > 80 
+                          ? 'rgb(239, 68, 68)' 
+                          : usedStoragePercentage > 60 
+                            ? 'rgb(245, 158, 11)' 
+                            : 'rgb(59, 130, 246)'
+                      }}
+                    />
+                  </div>
+                  
+                  <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{Math.round(usedStoragePercentage)}% used</span>
+                    <span>{((allocatedSize - totalSize) / (1024 * 1024 * 1024)).toFixed(1)} GB free</span>
+                  </div>
+                </div>
+                
+                {/* Pinned Content Stats Card */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center">
+                    <Heart className="h-4 w-4 mr-1 text-red-500" />
+                    Pinned Content
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div className="bg-red-50 dark:bg-red-900/10 p-2 rounded-md border border-red-100 dark:border-red-900/20">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">PC Only</div>
+                      <div className="text-xl font-semibold text-red-600 dark:text-red-400 flex items-center">
+                        {likedContents.length}
+                        <HardDrive className="h-4 w-4 ml-1" />
+                      </div>
+                    </div>
+                    
+                    <div className="bg-orange-50 dark:bg-orange-900/10 p-2 rounded-md border border-orange-100 dark:border-orange-900/20">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">All Devices</div>
+                      <div className="text-xl font-semibold text-orange-600 dark:text-orange-400 flex items-center">
+                        {lovedContents.length}
+                        <div className="relative ml-1">
+                          <HardDrive className="h-4 w-4" />
+                          <Smartphone className="h-3 w-3 absolute -top-1 -right-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Total of {stats?.pinnedCount || stats?.numPins || 0} items pinned to IPFS network
+                  </div>
+                </div>
               </div>
-              <Progress value={usedStoragePercentage} className="h-2" />
-              <div className="flex justify-between mt-1 text-xs text-gray-500">
-                <span>{stats.pinnedCount} files pinned</span>
-                <span>{(stats.allocatedSize - stats.totalSize) / (1024 * 1024 * 1024) > 0.1 ? 'Space available' : 'Storage nearly full'}</span>
+              
+              {/* Content Type Distribution */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm mb-4">
+                <h3 className="text-sm font-semibold mb-3">Content Distribution</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 mr-2">
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
+                      <div className="h-full bg-red-500" style={{ width: `${(likedContents.length / (likedContents.length + lovedContents.length || 1)) * 100}%` }}></div>
+                      <div className="h-full bg-orange-500" style={{ width: `${(lovedContents.length / (likedContents.length + lovedContents.length || 1)) * 100}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="text-xs flex items-center space-x-2">
+                    <span className="flex items-center">
+                      <div className="w-3 h-3 bg-red-500 rounded-full mr-1"></div>
+                      PC: {Math.round((likedContents.length / (likedContents.length + lovedContents.length || 1)) * 100)}%
+                    </span>
+                    <span className="flex items-center">
+                      <div className="w-3 h-3 bg-orange-500 rounded-full mr-1"></div>
+                      All: {Math.round((lovedContents.length / (likedContents.length + lovedContents.length || 1)) * 100)}%
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -174,7 +315,7 @@ const Storage: React.FC = () => {
               <Input
                 placeholder="Search pinned content..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
                 className="pl-9"
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />

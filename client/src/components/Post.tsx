@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,8 @@ import { Heart, Bookmark, MessageCircle, MoreHorizontal, HeartHandshake, CloudOf
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSync } from '@/contexts/SyncContext';
+import { useIPFS } from '@/contexts/IPFSContext';
+import { PinType } from '@/types';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,8 +36,25 @@ interface PostCardProps {
 export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const { isOffline } = useSync();
   const { toast } = useToast();
+  const { isContentPinned } = useIPFS();
+  
+  // Check if content is pinned to PC and/or mobile
   const [isPCPinned, setIsPCPinned] = useState(false);
   const [isBothPinned, setIsBothPinned] = useState(false);
+  
+  // Check pin status on mount and when post changes
+  useEffect(() => {
+    const checkPinStatus = async () => {
+      const pcPinned = isContentPinned(post.cid, PinType.LOCAL);
+      const mobilePinned = isContentPinned(post.cid, PinType.LOVE) || 
+                           isContentPinned(post.cid, PinType.REMOTE);
+      
+      setIsPCPinned(pcPinned && !mobilePinned);
+      setIsBothPinned(mobilePinned);
+    };
+    
+    checkPinStatus();
+  }, [post.cid, isContentPinned]);
   
   const isLocalOnly = post.cid.startsWith('local-');
   const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
@@ -67,7 +86,12 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   };
   
   return (
-    <Card className={`mb-4 ${post.hasConflict ? 'border-amber-300 dark:border-amber-800' : ''} ${isLocalOnly ? 'border-blue-300 dark:border-blue-800' : ''}`}>
+    <Card className={`mb-4 
+      ${post.hasConflict ? 'border-amber-300 dark:border-amber-800' : ''} 
+      ${isLocalOnly ? 'border-blue-300 dark:border-blue-800' : ''}
+      ${isPCPinned ? 'border-red-300 dark:border-red-800' : ''}
+      ${isBothPinned ? 'border-orange-300 dark:border-orange-800' : ''}
+    `}>
       <CardHeader className="flex flex-row items-center gap-4 p-4 pb-3">
         <Avatar className="h-10 w-10">
           <AvatarImage src="" alt={post.authorName} />
@@ -77,8 +101,32 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
         </Avatar>
         <div className="flex-1">
           <div className="font-semibold">{post.authorName}</div>
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
             @{post.authorUsername} • {timeAgo}
+            
+            {isPCPinned && (
+              <>
+                <span className="mx-1">•</span>
+                <span className="text-red-500 dark:text-red-400 inline-flex items-center gap-0.5">
+                  <Heart className="h-3 w-3 fill-current" />
+                  Pinned to PC
+                </span>
+              </>
+            )}
+            
+            {isBothPinned && (
+              <>
+                <span className="mx-1">•</span>
+                <span className="text-orange-500 dark:text-orange-400 inline-flex items-center gap-0.5">
+                  <div className="relative">
+                    <Heart className="h-3 w-3 fill-current" />
+                    <Flame className="h-2 w-2 absolute -top-0.5 -right-0.5" />
+                  </div>
+                  Pinned everywhere
+                </span>
+              </>
+            )}
+            
             {isLocalOnly && (
               <>
                 <span className="mx-1">•</span>
@@ -88,6 +136,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
                 </span>
               </>
             )}
+            
             {post.hasConflict && (
               <span className="ml-1 text-amber-500 dark:text-amber-400 text-xs">• Conflict</span>
             )}
