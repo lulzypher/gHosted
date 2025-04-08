@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
 import { useProfile } from '@/hooks/use-profile';
-import Header from '@/components/Header';
-import LeftSidebar from '@/components/LeftSidebar';
+import { Header } from '@/components/Header';
+import { LeftSidebar } from '@/components/LeftSidebar';
 import MobileNavigation from '@/components/MobileNavigation';
-import Post from '@/components/Post';
+import { PostCard } from '@/components/Post';
+import { FollowersList } from '@/components/FollowersList';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useQuery } from '@tanstack/react-query';
 import { 
   User, 
   Edit, 
@@ -16,7 +18,8 @@ import {
   Clock, 
   MapPin, 
   Link as LinkIcon, 
-  AtSign 
+  AtSign,
+  Users 
 } from 'lucide-react';
 import Login from './login';
 
@@ -30,6 +33,30 @@ const Profile: React.FC = () => {
     updateProfile,
     isUpdatingProfile
   } = useProfile(user?.id);
+
+  // Fetch follower counts
+  const { data: followers } = useQuery({
+    queryKey: [`/api/users/${user?.id}/followers`],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await fetch(`/api/users/${user.id}/followers`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!user?.id
+  });
+
+  // Fetch following counts
+  const { data: following } = useQuery({
+    queryKey: [`/api/users/${user?.id}/following`],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await fetch(`/api/users/${user.id}/following`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!user?.id
+  });
 
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState('');
@@ -247,11 +274,11 @@ const Profile: React.FC = () => {
                         <div className="text-sm text-gray-500">Posts</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-semibold">0</div>
+                        <div className="font-semibold">{following?.length || 0}</div>
                         <div className="text-sm text-gray-500">Following</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-semibold">0</div>
+                        <div className="font-semibold">{followers?.length || 0}</div>
                         <div className="text-sm text-gray-500">Followers</div>
                       </div>
                     </div>
@@ -260,6 +287,11 @@ const Profile: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Network section */}
+          {user?.id && (
+            <FollowersList userId={user.id} className="mb-4" />
+          )}
 
           {/* User Posts */}
           <div className="space-y-4">
@@ -284,7 +316,7 @@ const Profile: React.FC = () => {
             {!isLoadingUserPosts && userPosts?.length > 0 && (
               <>
                 {userPosts.map((post) => (
-                  <Post key={post.id} post={post} />
+                  <PostCard key={post.id} post={post} />
                 ))}
               </>
             )}

@@ -16,6 +16,8 @@ import { UserProvider } from '@/contexts/UserContext';
 import { ConflictResolution } from '@/components/ConflictResolution';
 import HomePageContent from '@/pages/home-page';
 import MessagingPage from '@/pages/messaging';
+import UserProfile from '@/pages/user-profile';
+import Profile from '@/pages/profile';
 import logoImage from "@assets/logoTransparent1.png";
 
 // Landing page for unauthenticated users
@@ -330,6 +332,8 @@ function App() {
                     <Switch>
                       <ProtectedRoute path="/" component={HomePage} />
                       <ProtectedRoute path="/messages" component={MessagingPage} />
+                      <ProtectedRoute path="/profile" component={Profile} />
+                      <ProtectedRoute path="/user/:id" component={UserProfile} />
                       <Route path="/auth" component={AuthPage} />
                       <Route path="/about" component={AboutPage} />
                       <Route component={NotFoundPage} />

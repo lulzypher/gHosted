@@ -501,6 +501,27 @@ export const conversationParticipantsRelations = relations(conversationParticipa
   }),
 }));
 
+// Followers table to track user relationships
+export const followers = pgTable("followers", {
+  id: serial("id").primaryKey(),
+  // The user who is following
+  followerId: integer("follower_id").notNull().references(() => users.id),
+  // The user being followed
+  followeeId: integer("followee_id").notNull().references(() => users.id),
+  // When the follow relationship was created
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    // Ensure unique follower-followee relationships
+    uniqueFollow: unique().on(table.followerId, table.followeeId),
+  };
+});
+
+export const insertFollowerSchema = createInsertSchema(followers).pick({
+  followerId: true,
+  followeeId: true,
+});
+
 // Update user relations to include messages and conversations
 export const usersRelationsExtended = relations(users, ({ many }) => ({
   nodes: many(nodes),
@@ -509,6 +530,21 @@ export const usersRelationsExtended = relations(users, ({ many }) => ({
   sentMessages: many(privateMessages, { relationName: "sentMessages" }),
   receivedMessages: many(privateMessages, { relationName: "receivedMessages" }),
   conversations: many(conversationParticipants),
+  following: many(followers, { relationName: "following" }),
+  followers: many(followers, { relationName: "followers" }),
+}));
+
+export const followersRelations = relations(followers, ({ one }) => ({
+  follower: one(users, {
+    fields: [followers.followerId],
+    references: [users.id],
+    relationName: "following",
+  }),
+  followee: one(users, {
+    fields: [followers.followeeId],
+    references: [users.id],
+    relationName: "followers",
+  }),
 }));
 
 export const websiteHostingRelations = relations(websiteHosting, ({ one }) => ({
@@ -551,3 +587,6 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 
 export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
 export type InsertConversationParticipant = z.infer<typeof insertConversationParticipantSchema>;
+
+export type Follower = typeof followers.$inferSelect;
+export type InsertFollower = z.infer<typeof insertFollowerSchema>;

@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { and, eq } from "drizzle-orm";
 import { 
   insertUserSchema, 
   insertContentSchema, 
@@ -12,13 +14,15 @@ import {
   insertPrivateMessageSchema,
   insertConversationSchema,
   insertConversationParticipantSchema,
+  insertFollowerSchema,
   contentTypeEnum,
   pinTypeEnum,
   nodeRoleEnum,
   nodeStatusEnum,
   reactionTypeEnum,
   messageStatusEnum,
-  encryptionTypeEnum
+  encryptionTypeEnum,
+  followers
 } from "@shared/schema";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
@@ -680,6 +684,172 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching pinned content:", error);
       res.status(500).json({ message: "Server error fetching pinned content" });
+    }
+  });
+  // FOLLOW/UNFOLLOW ROUTES
+  // Follow a user
+  app.post('/api/users/:userId/follow', async (req: Request, res: Response) => {
+    try {
+      // Get the current user from the session
+      const currentUser = req.user;
+      if (!currentUser) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const followeeId = parseInt(req.params.userId, 10);
+      
+      // Prevent following yourself
+      if (currentUser.id === followeeId) {
+        return res.status(400).json({ message: 'Cannot follow yourself' });
+      }
+
+      // Check if the user to follow exists
+      const followee = await db.query.users.findFirst({
+        where: eq(users.id, followeeId)
+      });
+
+      if (!followee) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Check if already following
+      const existingFollow = await db.query.followers.findFirst({
+        where: and(
+          eq(followers.followerId, currentUser.id),
+          eq(followers.followeeId, followeeId)
+        )
+      });
+
+      if (existingFollow) {
+        return res.status(400).json({ message: 'Already following this user' });
+      }
+
+      // Create the follow relationship
+      const follow = await db.insert(followers).values({
+        followerId: currentUser.id,
+        followeeId: followeeId
+      }).returning();
+
+      res.status(201).json(follow[0]);
+    } catch (error) {
+      console.error('Error following user:', error);
+      res.status(500).json({ message: 'Server error following user' });
+    }
+  });
+
+  // Unfollow a user
+  app.delete('/api/users/:userId/follow', async (req: Request, res: Response) => {
+    try {
+      // Get the current user from the session
+      const currentUser = req.user;
+      if (!currentUser) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const followeeId = parseInt(req.params.userId, 10);
+
+      // Delete the follow relationship
+      const result = await db.delete(followers)
+        .where(
+          and(
+            eq(followers.followerId, currentUser.id),
+            eq(followers.followeeId, followeeId)
+          )
+        )
+        .returning();
+
+      if (!result.length) {
+        return res.status(404).json({ message: 'Follow relationship not found' });
+      }
+
+      res.status(200).json({ message: 'Unfollowed successfully' });
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      res.status(500).json({ message: 'Server error unfollowing user' });
+    }
+  });
+
+  // Get followers of a user
+  app.get('/api/users/:userId/followers', async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+
+      // Get all followers for this user
+      const userFollowers = await db.query.followers.findMany({
+        where: eq(followers.followeeId, userId),
+        with: {
+          follower: true
+        }
+      });
+
+      // Format response to include follower details
+      const formattedFollowers = userFollowers.map(follow => ({
+        id: follow.follower.id,
+        username: follow.follower.username,
+        displayName: follow.follower.displayName,
+        avatarCid: follow.follower.avatarCid,
+        followedAt: follow.createdAt
+      }));
+
+      res.status(200).json(formattedFollowers);
+    } catch (error) {
+      console.error('Error getting followers:', error);
+      res.status(500).json({ message: 'Server error getting followers' });
+    }
+  });
+
+  // Get users followed by a user
+  app.get('/api/users/:userId/following', async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+
+      // Get all users this user is following
+      const following = await db.query.followers.findMany({
+        where: eq(followers.followerId, userId),
+        with: {
+          followee: true
+        }
+      });
+
+      // Format response to include followee details
+      const formattedFollowing = following.map(follow => ({
+        id: follow.followee.id,
+        username: follow.followee.username,
+        displayName: follow.followee.displayName,
+        avatarCid: follow.followee.avatarCid,
+        followedAt: follow.createdAt
+      }));
+
+      res.status(200).json(formattedFollowing);
+    } catch (error) {
+      console.error('Error getting following:', error);
+      res.status(500).json({ message: 'Server error getting following' });
+    }
+  });
+
+  // Check if current user follows a specific user
+  app.get('/api/users/:userId/follow-status', async (req: Request, res: Response) => {
+    try {
+      // Get the current user from the session
+      const currentUser = req.user;
+      if (!currentUser) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const targetUserId = parseInt(req.params.userId, 10);
+
+      // Check if the follow relationship exists
+      const existingFollow = await db.query.followers.findFirst({
+        where: and(
+          eq(followers.followerId, currentUser.id),
+          eq(followers.followeeId, targetUserId)
+        )
+      });
+
+      res.status(200).json({ following: !!existingFollow });
+    } catch (error) {
+      console.error('Error checking follow status:', error);
+      res.status(500).json({ message: 'Server error checking follow status' });
     }
   });
   
