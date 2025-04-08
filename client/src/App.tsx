@@ -18,6 +18,7 @@ import HomePageContent from '@/pages/home-page';
 import MessagingPage from '@/pages/messaging';
 import UserProfile from '@/pages/user-profile';
 import Profile from '@/pages/profile';
+import UsersDirectory from '@/pages/users-directory';
 import logoImage from "@assets/logoTransparent1.png";
 
 // Landing page for unauthenticated users
@@ -333,6 +334,7 @@ function App() {
                       <ProtectedRoute path="/" component={HomePage} />
                       <ProtectedRoute path="/messages" component={MessagingPage} />
                       <ProtectedRoute path="/profile" component={Profile} />
+                      <ProtectedRoute path="/users" component={UsersDirectory} />
                       <ProtectedRoute path="/user/:id" component={UserProfile} />
                       <Route path="/auth" component={AuthPage} />
                       <Route path="/about" component={AboutPage} />

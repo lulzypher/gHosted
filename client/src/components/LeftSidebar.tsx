@@ -12,7 +12,7 @@ export function LeftSidebar() {
   const navItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: User, label: 'Profile', path: '/profile' },
-    { icon: Users, label: 'Communities', path: '/communities' },
+    { icon: Users, label: 'Users Directory', path: '/users' },
     { icon: Bookmark, label: 'Saved Posts', path: '/saved' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
