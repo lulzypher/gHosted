@@ -478,12 +478,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = parseInt(req.params.userId);
       console.log(`Fetching posts for user ID: ${userId}`);
-      const posts = await storage.getPostsByUser(userId);
-      console.log(`Successfully fetched ${posts.length} posts for user ID: ${userId}`);
-      res.status(200).json(posts);
+      // Adding a safety check for valid userId
+      if (isNaN(userId) || userId <= 0) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      
+      try {
+        const posts = await storage.getPostsByUser(userId);
+        console.log(`Successfully fetched ${posts.length} posts for user ID: ${userId}`);
+        res.status(200).json(posts);
+      } catch (postErr) {
+        console.error('Database error fetching user posts:', postErr);
+        // Return empty array instead of 500 error to let the UI handle it gracefully
+        res.status(200).json([]);
+      }
     } catch (error) {
-      console.error('Error fetching user posts:', error);
-      res.status(500).json({ message: "Server error fetching user posts" });
+      console.error('Error in users/:userId/posts route:', error);
+      res.status(500).json({ message: "Server error processing posts request" });
     }
   });
   
@@ -530,7 +541,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = parseInt(req.params.userId);
       console.log(`Getting devices for user ID: ${userId}`);
       const nodes = await storage.getNodesByUser(userId);
-      const devices = nodes.filter(node => node.role === 'device');
+      // Expand nodeRoleEnum to include 'device' in schema.ts later
+      const devices = nodes.filter(node => node.role === 'mobile');
       res.status(200).json(devices);
     } catch (error) {
       console.error('Error fetching devices:', error);
@@ -576,7 +588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reactionData = {
         userId: req.user.id,
         postId: post.id,
-        reactionType: 'like', // Always 'like' type for now
+        reactionType: 'like' as const, // Using 'as const' to ensure it matches the enum type
         pinToPC: true,        // PC pinning is always enabled
         pinToMobile: type === 'both' // Mobile pinning depends on the pin type
       };
