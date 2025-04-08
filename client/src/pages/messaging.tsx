@@ -58,7 +58,8 @@ import {
   CircleCheck, 
   Users, 
   Lock, 
-  Shield 
+  Shield,
+  Info
 } from "lucide-react";
 import {
   Dialog,
@@ -506,6 +507,26 @@ const MessagingPage = () => {
       
       // Clear the input field
       setNewMessage("");
+      
+      // Make the application resilient even when WebSockets fail
+      // Instead of relying only on real-time updates, use a polling strategy as backup
+      
+      // Set up a short-term polling strategy to ensure messages appear
+      // This will fetch fresh data a few times after sending a message
+      const pollCount = 3;
+      const pollInterval = 2000; // 2 seconds
+      
+      // Poll a few times to make sure we get the latest messages
+      for (let i = 1; i <= pollCount; i++) {
+        setTimeout(() => {
+          // Only refresh if we're still on the same conversation
+          if (activeConversation?.conversationId) {
+            queryClient.invalidateQueries({ 
+              queryKey: ["/api/conversations", activeConversation.conversationId]
+            });
+          }
+        }, i * pollInterval);
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -682,6 +703,30 @@ const MessagingPage = () => {
     }
   }, [activeConversationData?.messages, user]);
   
+  // Fallback polling mechanism for when WebSockets are disconnected
+  useEffect(() => {
+    if (!activeConversation || !user) return;
+    
+    // Poll for new messages in the active conversation every 6 seconds
+    // This ensures we still get updates even if WebSockets disconnect
+    const pollingInterval = setInterval(() => {
+      if (activeConversation) {
+        // Only poll if the conversation is currently active
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/conversations", activeConversation.conversationId]
+        });
+      }
+      
+      // Also refresh the conversations list periodically to catch new messages
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      
+    }, 6000); // 6 seconds polling interval 
+    
+    return () => {
+      clearInterval(pollingInterval);
+    };
+  }, [activeConversation?.conversationId, user?.id, queryClient]);
+  
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -738,6 +783,20 @@ const MessagingPage = () => {
 
   return (
     <div className="container mx-auto py-6 max-w-7xl">
+      {/* Notification about websocket fallback */}
+      <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+        <div className="flex items-start">
+          <Info className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Connection Notice</p>
+            <p className="mt-1">
+              This app uses a hybrid approach with both WebSocket and polling for messages. 
+              WebSockets may occasionally have connection issues, but the app will continue to function normally using polling as a fallback.
+            </p>
+          </div>
+        </div>
+      </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
         {/* Left sidebar - Conversations List */}
         <div className="col-span-1 bg-card border rounded-lg shadow overflow-hidden flex flex-col">

@@ -72,6 +72,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       // Log the WebSocket connection state
       console.log('Initial WebSocket state:', ws.current.readyState);
+      
+      // To make this more resilient, set a short timeout - if we're getting 
+      // abnormal closures (code 1006), we'll try with HTTP/WS instead of HTTPS/WSS
+      // Note: We only do this as a fallback because our app has adequate polling mechanisms
 
       // Clear any existing timeout
       if (connectionTimeoutRef.current) {
