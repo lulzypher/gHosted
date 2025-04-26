@@ -323,61 +323,128 @@ export default function AuthPage() {
                       <span className="w-full border-t border-muted-foreground/30"></span>
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-card px-2 text-muted-foreground">Or use</span>
+                      <span className="bg-card px-2 text-muted-foreground">Login Options</span>
                     </div>
                   </div>
 
+                  {/* Temporary Development Login */}
+                  <div className="mb-6">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 mb-4">
+                      <h3 className="text-sm font-semibold text-amber-500 mb-1">Development Mode</h3>
+                      <p className="text-xs text-muted-foreground">
+                        This simplified login is available during development. 
+                        Enter any username and password to create a new account.
+                      </p>
+                    </div>
+                    <Form {...loginForm}>
+                      <form onSubmit={loginForm.handleSubmit((data) => {
+                        // Simple dev login that works without domain
+                        loginMutation.mutate({
+                          username: data.identifier,
+                          password: data.password
+                        });
+                      })} className="space-y-4">
+                        <FormField
+                          control={loginForm.control}
+                          name="identifier"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Development Username</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="any-username" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={loginForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <Input type="password" placeholder="any-password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button 
+                          type="submit" 
+                          className="w-full bg-amber-500 hover:bg-amber-600" 
+                          disabled={loginMutation.isPending}
+                        >
+                          {loginMutation.isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Logging in...
+                            </>
+                          ) : (
+                            "Development Login"
+                          )}
+                        </Button>
+                      </form>
+                    </Form>
+                  </div>
+
                   {/* Domain user login */}
-                  <Form {...loginForm}>
-                    <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
-                      <FormField
-                        control={loginForm.control}
-                        name="identifier"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Username@Domain</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="username@server.domain" 
-                                {...field} 
-                              />
-                            </FormControl>
-                            <FormMessage />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Format: username@servername (e.g., user@homeserver.net)
-                            </p>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={loginForm.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password</FormLabel>
-                            <FormControl>
-                              <Input type="password" placeholder="********" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button 
-                        type="submit" 
-                        className="w-full" 
-                        disabled={loginMutation.isPending}
-                      >
-                        {loginMutation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Logging in...
-                          </>
-                        ) : (
-                          "Login with Domain"
-                        )}
-                      </Button>
-                    </form>
-                  </Form>
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium mb-3">Domain Authentication</h3>
+                    <Form {...loginForm}>
+                      <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+                        <FormField
+                          control={loginForm.control}
+                          name="identifier"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Username@Domain</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="username@server.domain" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Format: username@servername (e.g., user@homeserver.net)
+                              </p>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={loginForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <Input type="password" placeholder="********" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button 
+                          type="submit" 
+                          className="w-full" 
+                          disabled={loginMutation.isPending}
+                        >
+                          {loginMutation.isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Logging in...
+                            </>
+                          ) : (
+                            "Login with Domain"
+                          )}
+                        </Button>
+                      </form>
+                    </Form>
+                  </div>
                 </CardContent>
                 <CardFooter className="flex justify-center">
                   <p className="text-sm text-muted-foreground">
@@ -401,6 +468,14 @@ export default function AuthPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 mb-4">
+                    <h3 className="text-sm font-semibold text-amber-500 mb-1">Development Mode Registration</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Create a new account with any details for development testing.
+                      This form generates cryptographic keys just like in production.
+                    </p>
+                  </div>
+                  
                   <Form {...registerForm}>
                     <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
                       <FormField
