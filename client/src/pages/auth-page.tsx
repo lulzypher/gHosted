@@ -50,6 +50,14 @@ const registerSchema = insertUserSchema
 type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+// Handle clearInterval and setInterval typings (fixes Window type issues)
+declare global {
+  interface Window {
+    clearInterval(id: number | null): void;
+    setInterval(handler: TimerHandler, timeout?: number, ...arguments: any[]): number;
+  }
+}
+
 export default function AuthPage() {
   const { user, loginMutation, registerMutation, qrLoginMutation } = useAuth();
   const { generateNewKeys } = useCryptoIdentity();
@@ -95,7 +103,7 @@ export default function AuthPage() {
     try {
       // Clear any previous intervals
       if (qrCheckInterval) {
-        window.clearInterval(qrCheckInterval);
+        clearInterval(qrCheckInterval);
       }
       
       // Generate a new session ID
@@ -117,25 +125,20 @@ export default function AuthPage() {
         expires: expiration.getTime()
       };
       
-      // Generate QR code
+      // Generate QR code with simpler options
       const qrCodeUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
-        errorCorrectionLevel: 'M',
         margin: 2,
-        scale: 8,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
+        width: 200
       });
       
       setQrCode(qrCodeUrl);
       
       // Set up interval to check for authentication status
-      const intervalId = window.setInterval(() => {
+      const intervalId = setInterval(() => {
         // Check if QR code is expired
         if (expiration.getTime() < Date.now()) {
           setIsQrExpired(true);
-          window.clearInterval(intervalId);
+          clearInterval(intervalId);
           return;
         }
         
@@ -145,12 +148,10 @@ export default function AuthPage() {
         }
       }, 3000);
       
-      setQrCheckInterval(intervalId);
-      
-      return qrCodeUrl;
+      // Store interval ID for cleanup
+      setQrCheckInterval(Number(intervalId));
     } catch (error) {
       console.error('Error generating QR code:', error);
-      return null;
     }
   };
   
@@ -246,55 +247,154 @@ export default function AuthPage() {
                 <CardHeader>
                   <CardTitle>Login to gHosted</CardTitle>
                   <CardDescription>
-                    Enter your credentials to access your account
+                    Choose how you want to access your account
                   </CardDescription>
+                  <div className="flex mt-4 border-b">
+                    <button
+                      type="button"
+                      className={`px-4 py-2 text-sm font-medium ${loginMethod === 'credentials' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+                      onClick={() => setLoginMethod('credentials')}
+                    >
+                      <User className="w-4 h-4 inline mr-2" />
+                      Username
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 text-sm font-medium ${loginMethod === 'domainuser' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+                      onClick={() => setLoginMethod('domainuser')}
+                    >
+                      <ServerCrash className="w-4 h-4 inline mr-2" />
+                      Username@Domain
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 text-sm font-medium ${loginMethod === 'qr' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+                      onClick={() => {
+                        setLoginMethod('qr');
+                        generateQRCode();
+                      }}
+                    >
+                      <QrCode className="w-4 h-4 inline mr-2" />
+                      QR Code
+                    </button>
+                  </div>
                 </CardHeader>
+
                 <CardContent>
-                  <Form {...loginForm}>
-                    <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-6">
-                      <FormField
-                        control={loginForm.control}
-                        name="username"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Username</FormLabel>
-                            <FormControl>
-                              <Input placeholder="your_username" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={loginForm.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password</FormLabel>
-                            <FormControl>
-                              <Input type="password" placeholder="********" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button 
-                        type="submit" 
-                        className="w-full" 
-                        disabled={loginMutation.isPending}
-                      >
-                        {loginMutation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Logging in...
-                          </>
+                  {/* Username/Password Login Form */}
+                  {(loginMethod === 'credentials' || loginMethod === 'domainuser') && (
+                    <Form {...loginForm}>
+                      <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-6">
+                        <FormField
+                          control={loginForm.control}
+                          name="identifier"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{loginMethod === 'domainuser' ? 'Username@Domain' : 'Username'}</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder={loginMethod === 'domainuser' ? 'username@server.domain' : 'your_username'} 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                              {loginMethod === 'domainuser' && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Format: username@servername (e.g., user@homeserver.net)
+                                </p>
+                              )}
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={loginForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <Input type="password" placeholder="********" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button 
+                          type="submit" 
+                          className="w-full" 
+                          disabled={loginMutation.isPending}
+                        >
+                          {loginMutation.isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Logging in...
+                            </>
+                          ) : (
+                            "Login"
+                          )}
+                        </Button>
+                      </form>
+                    </Form>
+                  )}
+
+                  {/* QR Code Login */}
+                  {loginMethod === 'qr' && (
+                    <div className="flex flex-col items-center py-4">
+                      <div ref={qrCanvasRef} className="bg-white p-3 rounded-lg mb-4">
+                        {isQrExpired ? (
+                          <div className="flex flex-col items-center justify-center" style={{ width: '200px', height: '200px' }}>
+                            <p className="text-destructive font-medium">QR Code Expired</p>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={generateQRCode} 
+                              className="mt-2"
+                            >
+                              Generate New QR
+                            </Button>
+                          </div>
+                        ) : qrCode ? (
+                          <img 
+                            src={qrCode} 
+                            alt="Login QR Code" 
+                            className="max-w-full"
+                          />
                         ) : (
-                          "Login"
+                          <div className="flex items-center justify-center" style={{ width: '200px', height: '200px' }}>
+                            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                          </div>
                         )}
+                      </div>
+                      <p className="text-sm text-center text-muted-foreground mb-4">
+                        Scan this QR code with your gHosted mobile app to login
+                      </p>
+                      {qrExpires && !isQrExpired && (
+                        <p className="text-xs text-muted-foreground">
+                          Expires in {Math.max(0, Math.floor((qrExpires.getTime() - Date.now()) / 1000))} seconds
+                        </p>
+                      )}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={generateQRCode} 
+                        className="mt-2"
+                      >
+                        Generate New QR
                       </Button>
-                    </form>
-                  </Form>
+                      <div className="mt-6 text-xs text-muted-foreground text-center">
+                        <p>No mobile app? Get started with username login instead.</p>
+                        <Button 
+                          variant="link" 
+                          className="p-0 h-auto text-xs"
+                          onClick={() => setLoginMethod('credentials')}
+                        >
+                          Switch to username login
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
+
                 <CardFooter className="flex justify-center">
                   <p className="text-sm text-muted-foreground">
                     Don't have an account?{" "}
@@ -350,7 +450,11 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Bio (Optional)</FormLabel>
                             <FormControl>
-                              <Input placeholder="Tell us about yourself" {...field} />
+                              <Input 
+                                placeholder="Tell us about yourself" 
+                                {...field} 
+                                value={field.value || ""} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
