@@ -55,23 +55,20 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsIPFSReady(true);
         setIpfsError(null);
         
-        // Check if we're using the mock implementation
-        const usingMock = isUsingMockIPFS();
-        setUsingMockImplementation(usingMock);
+        // We're always using real implementations now
+        setUsingMockImplementation(false);
         
-        if (usingMock) {
-          toast({
-            title: "Using Local Storage",
-            description: "Connected to local storage for content. Infura IPFS service is not available.",
-            duration: 5000,
-          });
-        }
+        toast({
+          title: "IPFS Connected",
+          description: "Connected to IPFS network for decentralized content storage.",
+          duration: 3000,
+        });
         
         // Get initial stats
         const initialStats = await getIPFSStats();
         setStats(initialStats);
         
-        console.log('IPFS initialized successfully!', usingMock ? '(using mock implementation)' : '');
+        console.log('IPFS initialized successfully!');
       } catch (error) {
         retry += 1;
         let errorMessage = 'Failed to initialize IPFS.';
@@ -111,9 +108,8 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIsIPFSReady(true);
             setIpfsError(null);
             
-            // Check if we're using the mock implementation despite trying not to
-            const usingMock = isUsingMockIPFS();
-            setUsingMockImplementation(usingMock);
+            // Always use real implementation
+            setUsingMockImplementation(false);
             
             // Get initial stats
             const initialStats = await getIPFSStats();
