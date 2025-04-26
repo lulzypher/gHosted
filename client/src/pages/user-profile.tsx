@@ -43,17 +43,28 @@ const UserProfile: React.FC = () => {
   // Fetch user posts
   const {
     data: userPosts,
-    isLoading: isLoadingUserPosts
+    isLoading: isLoadingUserPosts,
+    error: userPostsError
   } = useQuery({
     queryKey: [`/api/users/${userId}/posts`],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${userId}/posts`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch user posts');
+      try {
+        const res = await fetch(`/api/users/${userId}/posts`);
+        if (!res.ok) {
+          console.error('Posts fetch response not OK:', res.status, res.statusText);
+          return []; // Return empty array instead of throwing
+        }
+        const data = await res.json();
+        console.log('Fetched user posts:', data);
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        console.error('Error fetching user posts:', err);
+        return []; // Return empty array to avoid breaking the UI
       }
-      return res.json();
     },
-    enabled: !!userId
+    enabled: !!userId,
+    // If fetch fails, return empty array instead of showing error
+    retry: 1
   });
 
   // Fetch follower counts

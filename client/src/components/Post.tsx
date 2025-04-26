@@ -13,18 +13,27 @@ import { useToast } from '@/hooks/use-toast';
 
 export interface PostType {
   id: number;
-  cid: string;
-  authorId: number;
-  authorName: string;
-  authorUsername: string;
+  contentCid?: string;  // From API
+  cid?: string;        // Local naming
+  authorId?: number;
+  userId?: number;     // From API
+  authorName?: string;
+  authorUsername?: string;
+  username?: string;   // From API
+  displayName?: string; // From API
   content: string;
   createdAt: string;
   mediaUrl?: string;
-  likes: number;
-  commentCount: number;
+  mediaCid?: string;   // From API
+  likes?: number;
+  comments?: number;   // From API
+  commentCount?: number;
+  shares?: number;     // From API
   hasConflict?: boolean;
   deleted?: boolean;
+  isDeleted?: boolean; // From API
   synced?: boolean;
+  isPrivate?: boolean; // From API
 }
 
 interface PostCardProps {
@@ -38,6 +47,16 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const { toast } = useToast();
   const { isContentPinned } = useIPFS();
   
+  // Normalize post data to handle different field names from API vs local
+  const postCid = post.cid || post.contentCid || '';
+  const authorId = post.authorId || post.userId || 0;
+  const authorName = post.authorName || post.displayName || post.username || 'Unknown User';
+  const authorUsername = post.authorUsername || post.username || 'unknown';
+  const likes = post.likes || 0;
+  const commentCount = post.commentCount || post.comments || 0;
+  const mediaUrl = post.mediaUrl || (post.mediaCid ? `https://ipfs.io/ipfs/${post.mediaCid}` : undefined);
+  const isDeleted = post.deleted || post.isDeleted || false;
+  
   // Check if content is pinned to PC and/or mobile
   const [isPCPinned, setIsPCPinned] = useState(false);
   const [isBothPinned, setIsBothPinned] = useState(false);
@@ -45,44 +64,59 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   // Check pin status on mount and when post changes
   useEffect(() => {
     const checkPinStatus = async () => {
-      const pcPinned = isContentPinned(post.cid, PinType.LOCAL);
-      const mobilePinned = isContentPinned(post.cid, PinType.LOVE) || 
-                           isContentPinned(post.cid, PinType.REMOTE);
+      if (!postCid) return;
       
-      setIsPCPinned(pcPinned && !mobilePinned);
-      setIsBothPinned(mobilePinned);
+      try {
+        const pcPinned = isContentPinned(postCid, PinType.LOCAL);
+        const mobilePinned = isContentPinned(postCid, PinType.LOVE) || 
+                            isContentPinned(postCid, PinType.REMOTE);
+        
+        setIsPCPinned(pcPinned && !mobilePinned);
+        setIsBothPinned(mobilePinned);
+      } catch (err) {
+        console.error('Error checking pin status:', err);
+      }
     };
     
     checkPinStatus();
-  }, [post.cid, isContentPinned]);
+  }, [postCid, isContentPinned]);
   
-  const isLocalOnly = post.cid.startsWith('local-');
+  // Don't render deleted posts
+  if (isDeleted) return null;
+  
+  // Don't render if missing critical data
+  if (!post.content) {
+    console.warn('Post missing content, skipping render:', post);
+    return null;
+  }
+  
+  const isLocalOnly = postCid.startsWith('local-');
   const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   
   const handlePin = (type: 'pc' | 'both') => {
-    if (onPin) {
-      onPin(post.cid, type);
-      
-      if (type === 'pc') {
-        setIsPCPinned(true);
-        setIsBothPinned(false);
-        toast({
-          title: "Pinned to PC",
-          description: "This content will be preserved on your PC only",
-        });
-      } else {
-        setIsPCPinned(false);
-        setIsBothPinned(true);
-        toast({
-          title: "Pinned to PC & Mobile",
-          description: "This content will be preserved on all your devices",
-        });
-      }
+    if (!onPin || !postCid) return;
+    
+    onPin(postCid, type);
+    
+    if (type === 'pc') {
+      setIsPCPinned(true);
+      setIsBothPinned(false);
+      toast({
+        title: "Pinned to PC",
+        description: "This content will be preserved on your PC only",
+      });
+    } else {
+      setIsPCPinned(false);
+      setIsBothPinned(true);
+      toast({
+        title: "Pinned to PC & Mobile",
+        description: "This content will be preserved on all your devices",
+      });
     }
   };
   
   const handleDelete = () => {
-    if (onDelete) onDelete(post.cid);
+    if (onDelete && postCid) onDelete(postCid);
   };
   
   return (
