@@ -95,10 +95,7 @@ export default function AuthPage() {
     },
   });
 
-  // If user is already logged in, redirect to home
-  if (user) {
-    return <Redirect to="/" />;
-  }
+  // We'll handle redirect after all hooks have been called
 
   // Generate QR code for authentication
   const generateQRCode = async () => {
@@ -235,6 +232,11 @@ export default function AuthPage() {
       }
     };
   }, [activeTab]);
+
+  // After all hooks are called, we can safely redirect if user is logged in
+  if (user) {
+    return <Redirect to="/" />;
+  }
 
   return (
     <div className="flex min-h-screen">
