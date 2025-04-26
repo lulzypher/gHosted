@@ -5,15 +5,22 @@ import {
   User, 
   PlusCircle, 
   HardDrive, 
-  Settings 
+  Settings,
+  LogOut 
 } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 
 const MobileNavigation: React.FC = () => {
   const [location] = useLocation();
+  const { logoutMutation } = useAuth();
+  
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
   
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 z-50">
-      <div className="flex justify-around">
+      <div className="grid grid-cols-5">
         <Link href="/">
           <a className={`py-3 flex flex-col items-center ${location === '/' ? 'text-primary' : 'text-gray-500'}`}>
             <Home className="h-5 w-5" />
@@ -49,13 +56,14 @@ const MobileNavigation: React.FC = () => {
             <span className="text-xs mt-1">Storage</span>
           </a>
         </Link>
-        
-        <Link href="/settings">
-          <a className={`py-3 flex flex-col items-center ${location === '/settings' ? 'text-primary' : 'text-gray-500'}`}>
-            <Settings className="h-5 w-5" />
-            <span className="text-xs mt-1">Settings</span>
-          </a>
-        </Link>
+
+        <button 
+          onClick={handleLogout}
+          className="py-3 flex flex-col items-center text-red-500 bg-transparent border-none"
+        >
+          <LogOut className="h-5 w-5" />
+          <span className="text-xs mt-1">Logout</span>
+        </button>
       </div>
     </nav>
   );

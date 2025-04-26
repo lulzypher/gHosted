@@ -1,10 +1,22 @@
 import React from 'react';
-import { Bell, Search, Settings, MessageSquare } from 'lucide-react';
+import { Bell, Search, Settings, MessageSquare, LogOut, User } from 'lucide-react';
 import { Link } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function Header() {
-  const { user } = useAuth();
+  const { user, logoutMutation } = useAuth();
+  
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
   
   return (
     <header className="sticky top-0 z-10 w-full bg-[#242526] border-b border-[#3a3b3c] shadow-sm">
@@ -47,24 +59,50 @@ export function Header() {
               2
             </span>
           </button>
-          <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
-            <Settings className="h-5 w-5" />
-          </button>
-          <Link href="/profile">
-            <div className="ml-2 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[#3a3b3c] hover:border-[#4e4f50] cursor-pointer">
-              {user?.avatarCid ? (
-                <img
-                  src={`https://ipfs.io/ipfs/${user.avatarCid}`}
-                  alt={user.displayName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="h-full w-full bg-[#3a3b3c] flex items-center justify-center text-[#e4e6eb] font-medium">
-                  {user?.displayName?.charAt(0) || user?.username?.charAt(0) || '?'}
-                </div>
-              )}
-            </div>
+          <Link href="/settings">
+            <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
+              <Settings className="h-5 w-5" />
+            </button>
           </Link>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div className="ml-2 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[#3a3b3c] hover:border-[#4e4f50] cursor-pointer">
+                {user?.avatarCid ? (
+                  <img
+                    src={`https://ipfs.io/ipfs/${user.avatarCid}`}
+                    alt={user.displayName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-[#3a3b3c] flex items-center justify-center text-[#e4e6eb] font-medium">
+                    {user?.displayName?.charAt(0) || user?.username?.charAt(0) || '?'}
+                  </div>
+                )}
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <Link href="/profile">
+                <DropdownMenuItem>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+              </Link>
+              <Link href="/settings">
+                <DropdownMenuItem>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+              </Link>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:bg-red-500/10">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Logout</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
