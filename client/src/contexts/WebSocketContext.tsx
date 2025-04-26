@@ -142,15 +142,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.log(`WebSocket closed with code ${event.code}: ${reason}`);
         }
 
-        // Try to reconnect after a delay, with exponential backoff
+        // Try to reconnect after a delay, but only once with a fixed timeout
+        // This prevents flickering caused by constant reconnection attempts
         if (!reconnectTimeoutRef.current) {
-          const backoffTime = Math.min(30000, 5000 * Math.pow(2, Math.floor(Math.random() * 3)));
-          console.log(`Will attempt to reconnect in ${backoffTime/1000} seconds`);
+          // Use a longer fixed timeout (30 seconds) to reduce reconnection frequency
+          const reconnectTime = 30000;
+          console.log(`Will attempt to reconnect in ${reconnectTime/1000} seconds`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectTimeoutRef.current = undefined;
             connectWebSocket();
-          }, backoffTime);
+          }, reconnectTime);
         }
       };
 

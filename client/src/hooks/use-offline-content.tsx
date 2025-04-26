@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSync } from '@/contexts/SyncContext';
 import { addLocalPost, getAllPosts, deleteLocalPost } from '@/lib/localStore';
 import { PostType } from '@/components/Post';
@@ -36,14 +36,25 @@ export function useOfflineContent({ autoSync = true }: UseOfflineContentProps = 
     }
   }, [toast]);
 
-  // Load posts on mount and when sync status changes
+  // Load posts only on mount and when explicitly refreshed
+  // This prevents constant refreshing when sync status changes
   useEffect(() => {
     loadPosts();
-  }, [loadPosts, syncStatus.lastSyncTime]);
+    // Only depend on loadPosts, not syncStatus.lastSyncTime
+    // This prevents flickering from constant re-renders
+  }, [loadPosts]);
 
   // Trigger sync when coming back online if autoSync is enabled
+  // Add a debounce/throttle effect using a ref to reduce frequency
+  const lastSyncAttemptRef = useRef<number>(0);
+  
   useEffect(() => {
-    if (isOnline && autoSync && !syncStatus.isSyncing) {
+    // Only trigger sync if we're online, auto-sync is enabled, and
+    // we're not already syncing, and it's been at least 10 seconds since last attempt
+    const now = Date.now();
+    if (isOnline && autoSync && !syncStatus.isSyncing && 
+        (now - lastSyncAttemptRef.current > 10000)) {
+      lastSyncAttemptRef.current = now;
       triggerSync().catch(console.error);
     }
   }, [isOnline, autoSync, triggerSync, syncStatus.isSyncing]);
