@@ -354,14 +354,10 @@ export const initIPFS = async (): Promise<any> => {
     
     isConnecting = true;
     
-    // Check if we've previously decided to use mock IPFS
+    // Clear any existing mock IPFS preference to ensure we use real data
     if (typeof window !== 'undefined' && window.localStorage && 
         window.localStorage.getItem('use-mock-ipfs') === 'true') {
-      console.log('Using mock IPFS implementation from localStorage preference');
-      ipfs = createMockIPFSClient();
-      usingMockIPFS = true;
-      isConnecting = false;
-      return ipfs;
+      window.localStorage.removeItem('use-mock-ipfs');
     }
     
     console.log('Attempting to connect to IPFS via browser client...');
@@ -397,9 +393,20 @@ export const initIPFS = async (): Promise<any> => {
     isConnecting = false;
     console.error('Failed to initialize IPFS:', error);
     
-    // Last resort: create mock client
-    ipfs = createMockIPFSClient();
-    usingMockIPFS = true;
+    // Last resort: try one more time with browser client
+    console.log('Attempting one more time with browser client...');
+    try {
+      ipfs = new BrowserIPFSClient();
+      usingMockIPFS = false;
+    } catch (finalError) {
+      console.error('Final browser client initialization failed:', finalError);
+      
+      // We really don't want to use mock data, but we need something functioning
+      // This should now only happen in extreme cases
+      console.warn('WARNING: Using real but limited IPFS functionality');
+      ipfs = new BrowserIPFSClient(true); // Limited functionality flag
+      usingMockIPFS = false;
+    }
     
     return ipfs;
   }

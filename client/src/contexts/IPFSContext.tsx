@@ -85,41 +85,44 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         setIpfsError(errorMessage);
         
-        // Try again with a mock implementation
+        // Keep trying to connect to real IPFS, don't fall back to mock
         if (retry >= maxRetries) {
+          console.error('Max retries reached for IPFS connection');
+          setIsIPFSReady(false);
+          
+          toast({
+            variant: "destructive",
+            title: "IPFS Connection Failed",
+            description: "Could not connect to IPFS service. Some functionality may be limited. Please refresh to try again.",
+            duration: 7000,
+          });
+          
+          // Try one more time with real implementation
           try {
-            console.log('Falling back to mock IPFS implementation...');
-            // Forces mock implementation on next attempt
+            console.log('Making final attempt to connect to IPFS...');
+            
+            // Ensure we're not using mock implementation
             if (typeof window !== 'undefined' && window.localStorage) {
-              window.localStorage.setItem('use-mock-ipfs', 'true');
+              window.localStorage.removeItem('use-mock-ipfs');
             }
             
             const ipfsInstance = await initIPFS();
             setIpfs(ipfsInstance);
             setIsIPFSReady(true);
             setIpfsError(null);
-            setUsingMockImplementation(true);
+            
+            // Check if we're using the mock implementation despite trying not to
+            const usingMock = isUsingMockIPFS();
+            setUsingMockImplementation(usingMock);
             
             // Get initial stats
             const initialStats = await getIPFSStats();
             setStats(initialStats);
             
-            toast({
-              title: "Using Local Storage",
-              description: "Connected to local storage for content. Infura IPFS service is not available.",
-              duration: 5000,
-            });
-            
-            console.log('Mock IPFS initialized successfully!');
-          } catch (mockError) {
-            console.error('Failed to initialize mock IPFS:', mockError);
+            console.log('IPFS initialized successfully on final attempt!');
+          } catch (finalError) {
+            console.error('Failed final IPFS connection attempt:', finalError);
             setIsIPFSReady(false);
-            
-            toast({
-              variant: "destructive",
-              title: "IPFS Connection Failed",
-              description: "Could not connect to storage. Limited functionality available.",
-            });
           }
         } else {
           console.log(`Retrying IPFS connection (${retry}/${maxRetries}) in 5 seconds...`);

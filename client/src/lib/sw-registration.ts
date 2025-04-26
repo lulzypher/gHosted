@@ -71,43 +71,8 @@ export async function registerServiceWorker(): Promise<void> {
       console.error('Service worker registration failed:', error);
     }
   } else {
-    // In development, we'll use our mock service worker
-    console.log('Using mock service worker for development');
-    mockServiceWorker = MockServiceWorker.getInstance();
-    mockServiceWorker.activate();
-    
-    // Intercept fetch requests to cache responses
-    const originalFetch = window.fetch;
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const request = new Request(input, init);
-      const url = request.url;
-      
-      try {
-        // Try the network first
-        const response = await originalFetch(input, init);
-        
-        // Cache successful GET responses
-        if (response.ok && request.method === 'GET' && mockServiceWorker) {
-          mockServiceWorker.cacheResource(url, response);
-        }
-        
-        return response;
-      } catch (error) {
-        // If network request fails and we have a cached response, return it
-        if (mockServiceWorker && mockServiceWorker.isCached(url)) {
-          console.log(`[MockSW] Serving cached response for: ${url}`);
-          const cachedResponse = await mockServiceWorker.getCachedResource(url);
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-        }
-        
-        // Otherwise, rethrow the error
-        throw error;
-      }
-    };
-    
-    console.log('[MockSW] Mock service worker initialized');
+    // Don't use mock service worker to ensure we use real data
+    console.log('Using real data in development mode, no mock service worker');
   }
 }
 
