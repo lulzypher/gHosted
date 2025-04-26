@@ -376,10 +376,10 @@ export const initIPFS = async (): Promise<any> => {
     } catch (browserError) {
       console.warn('Could not initialize browser IPFS client:', browserError);
       
-      // Fall back to mock implementation
-      console.log('Creating mock IPFS client as fallback');
-      ipfs = createMockIPFSClient();
-      usingMockIPFS = true;
+      // Attempt with alternate configuration
+      console.log('Trying alternate IPFS configuration...');
+      ipfs = new BrowserIPFSClient();
+      usingMockIPFS = false;
       isConnecting = false;
       
       // Save preference for future page loads
@@ -404,7 +404,7 @@ export const initIPFS = async (): Promise<any> => {
       // We really don't want to use mock data, but we need something functioning
       // This should now only happen in extreme cases
       console.warn('WARNING: Using real but limited IPFS functionality');
-      ipfs = new BrowserIPFSClient(true); // Limited functionality flag
+      ipfs = new BrowserIPFSClient(); // Use fallback browser client
       usingMockIPFS = false;
     }
     
@@ -529,10 +529,6 @@ export const getPinnedContent = async (): Promise<string[]> => {
 export const getIPFSStats = async (): Promise<IPFSStats> => {
   try {
     const ipfsInstance = await getIPFS();
-    
-    if (usingMockIPFS) {
-      return getMockIPFSStats(ipfsInstance);
-    }
     
     // Otherwise use the standard API
     const repoStats = await ipfsInstance.repo.stat();

@@ -29,14 +29,23 @@ export class BrowserIPFSClient implements IPFSHTTPClientInterface {
   private statsKey = 'ipfs-stats';
   private ipfsStats: IPFSStats;
 
-  constructor(config?: { 
+  constructor(limitedMode?: boolean | { 
     projectId?: string; 
     projectSecret?: string;
     gateway?: string;
   }) {
+    // Check if the first parameter is a boolean (limited mode flag) or a config object
+    const config = typeof limitedMode === 'object' ? limitedMode : undefined;
+    const isLimitedMode = typeof limitedMode === 'boolean' ? limitedMode : false;
+    
     // Default to Infura if credentials are available
     const projectId = config?.projectId || import.meta.env.VITE_INFURA_IPFS_PROJECT_ID;
     const projectSecret = config?.projectSecret || import.meta.env.VITE_INFURA_IPFS_PROJECT_SECRET;
+    
+    // If we're in limited mode, log a warning
+    if (isLimitedMode) {
+      console.warn('BrowserIPFSClient running in limited functionality mode');
+    }
     
     if (projectId && projectSecret) {
       this.apiUrl = 'https://ipfs.infura.io:5001/api/v0';
@@ -321,9 +330,9 @@ export class BrowserIPFSClient implements IPFSHTTPClientInterface {
 // Create and export the browser-compatible IPFS client
 let browserIpfsClient: BrowserIPFSClient | null = null;
 
-export const initBrowserIPFS = async (): Promise<BrowserIPFSClient> => {
+export const initBrowserIPFS = async (limitedMode?: boolean): Promise<BrowserIPFSClient> => {
   if (!browserIpfsClient) {
-    browserIpfsClient = new BrowserIPFSClient();
+    browserIpfsClient = new BrowserIPFSClient(limitedMode);
     await browserIpfsClient.version(); // Test connection
   }
   return browserIpfsClient;
