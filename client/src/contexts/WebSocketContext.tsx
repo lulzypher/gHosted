@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -21,9 +21,46 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageListenersRef = useRef<Array<(data: any) => void>>([]);
+  
+  // Track if we should disable WebSocket reconnection after multiple failures
+  const getFailureCount = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return Number(window.localStorage.getItem('websocket_failures') || '0');
+    }
+    return 0;
+  };
+  
+  const setFailureCount = (count: number) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('websocket_failures', String(count));
+    }
+  };
+  
+  const isWebSocketDisabled = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('websocket_disabled') === 'true';
+    }
+    return false;
+  };
+  
+  const setWebSocketDisabled = (disabled: boolean) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (disabled) {
+        window.localStorage.setItem('websocket_disabled', 'true');
+      } else {
+        window.localStorage.removeItem('websocket_disabled');
+      }
+    }
+  };
 
   // Function to establish WebSocket connection
   const connectWebSocket = () => {
+    // If WebSockets are disabled after multiple failures, don't attempt to connect
+    if (isWebSocketDisabled()) {
+      console.log('WebSocket connections are disabled due to multiple failures');
+      return;
+    }
+    
     // First check if WebSockets are supported at all
     if (typeof WebSocket === 'undefined') {
       console.error('WebSockets are not supported in this browser');
@@ -108,6 +145,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = undefined;
         }
+        
+        // Reset failure count on successful connection
+        setFailureCount(0);
+        setWebSocketDisabled(false);
       };
 
       ws.current.onclose = (event) => {
@@ -142,16 +183,28 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.log(`WebSocket closed with code ${event.code}: ${reason}`);
         }
 
-        // Try to reconnect after a delay, but only once with a fixed timeout
-        // This prevents flickering caused by constant reconnection attempts
-        if (!reconnectTimeoutRef.current) {
+        // Track consecutive WebSocket failures
+        // After 3 consecutive failures, stop trying to reconnect to reduce flickering
+        const failureCount = getFailureCount();
+        
+        if (failureCount >= 3) {
+          console.log('Too many WebSocket failures, disabling automatic reconnection');
+          // Don't schedule a reconnect, but allow manual reconnection
+          setWebSocketDisabled(true);
+        } else if (!reconnectTimeoutRef.current) {
+          // Increment failure count
+          setFailureCount(failureCount + 1);
+          
           // Use a longer fixed timeout (30 seconds) to reduce reconnection frequency
           const reconnectTime = 30000;
           console.log(`Will attempt to reconnect in ${reconnectTime/1000} seconds`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectTimeoutRef.current = undefined;
-            connectWebSocket();
+            // Only attempt reconnection if not explicitly disabled
+            if (!isWebSocketDisabled()) {
+              connectWebSocket();
+            }
           }, reconnectTime);
         }
       };
@@ -299,6 +352,12 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Manually reconnect (can be called when needed)
   const reconnect = () => {
+    // Clear the WebSocket disabled flag and reset failure count
+    // when a user manually attempts reconnection
+    setWebSocketDisabled(false);
+    setFailureCount(0);
+    
+    // Clear any existing timeouts
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = undefined;
@@ -307,6 +366,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       clearTimeout(connectionTimeoutRef.current);
       connectionTimeoutRef.current = undefined;
     }
+    
+    // Attempt connection
     connectWebSocket();
   };
 
