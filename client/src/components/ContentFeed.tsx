@@ -106,7 +106,7 @@ export function ContentFeed() {
       </div>
       
       {isOffline && (
-        <Alert variant="warning" className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+        <Alert className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
           <WifiOff className="h-4 w-4" />
           <AlertTitle>You're offline</AlertTitle>
           <AlertDescription>

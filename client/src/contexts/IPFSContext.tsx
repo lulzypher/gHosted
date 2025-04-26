@@ -176,8 +176,11 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     try {
-      // First pin to IPFS
-      await pinToIPFS(contentCid);
+      // First pin to IPFS if it's not a light pin
+      if (pinType !== PinType.LIGHT) {
+        await pinToIPFS(contentCid);
+      }
+      // For light pins, we skip pinning the content to IPFS but still save the reference
       
       // If device ID wasn't provided, use current device
       const currentDevice = getCurrentDevice();
@@ -199,9 +202,26 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedStats = await getIPFSStats();
       setStats(updatedStats);
       
+      let title, description;
+      
+      switch(pinType) {
+        case PinType.LOVE:
+        case PinType.REMOTE:
+          title = "Loved Content";
+          description = "Content has been pinned to all your devices";
+          break;
+        case PinType.LIGHT:
+          title = "Light Pinned";
+          description = "Post metadata saved without large media files";
+          break;
+        default:
+          title = "Liked Content";
+          description = "Content has been pinned to your PC only";
+      }
+      
       toast({
-        title: pinType === PinType.LOVE || pinType === PinType.REMOTE ? "Loved Content" : "Liked Content",
-        description: `Content has been pinned to your ${pinType === PinType.LOVE || pinType === PinType.REMOTE ? "devices" : "PC"}.`,
+        title,
+        description,
       });
     } catch (error) {
       console.error('Error pinning content:', error);
@@ -246,14 +266,27 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if content is pinned
   const isContentPinned = (contentCid: string, pinType?: PinType): boolean => {
     if (pinType) {
-      // Check for specific pin type, with special handling for LOVE and REMOTE which are equivalent
+      // Check for specific pin type
       if (pinType === PinType.LOVE || pinType === PinType.REMOTE) {
+        // Special handling for LOVE and REMOTE which are equivalent
         return pinnedContents.some(
           content => content.contentCid === contentCid && 
                     (content.pinType === PinType.REMOTE || content.pinType === PinType.LOVE)
         );
+      } else if (pinType === PinType.LIGHT) {
+        // For light pins, check specifically for LIGHT type
+        return pinnedContents.some(
+          content => content.contentCid === contentCid && content.pinType === PinType.LIGHT
+        );
+      } else if (pinType === PinType.LOCAL || pinType === PinType.LIKE) {
+        // For local pins, check specifically for LOCAL or LIKE type
+        return pinnedContents.some(
+          content => content.contentCid === contentCid && 
+                    (content.pinType === PinType.LOCAL || content.pinType === PinType.LIKE)
+        );
       }
       
+      // Default case for other pin types
       return pinnedContents.some(
         content => content.contentCid === contentCid && content.pinType === pinType
       );
