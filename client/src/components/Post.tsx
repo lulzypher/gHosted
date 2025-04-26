@@ -54,7 +54,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const authorUsername = post.authorUsername || post.username || 'unknown';
   const likes = post.likes || 0;
   const commentCount = post.commentCount || post.comments || 0;
-  const mediaUrl = post.mediaUrl || (post.mediaCid ? `https://ipfs.io/ipfs/${post.mediaCid}` : undefined);
+  const mediaUrl = post.mediaUrl || (post.mediaCid ? `https://ipfs.io/ipfs/${post.mediaCid}` : '');
   const isDeleted = post.deleted || post.isDeleted || false;
   
   // Check if content is pinned to PC and/or mobile
@@ -90,7 +90,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
     return null;
   }
   
-  const isLocalOnly = postCid.startsWith('local-');
+  const isLocalOnly = postCid && postCid.startsWith('local-');
   const timeAgo = formatDistanceToNow(new Date(post.createdAt), { addSuffix: true });
   
   const handlePin = (type: 'pc' | 'both') => {
@@ -128,15 +128,15 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
     `}>
       <CardHeader className="flex flex-row items-center gap-4 p-4 pb-3">
         <Avatar className="h-10 w-10">
-          <AvatarImage src="" alt={post.authorName} />
+          <AvatarImage src="" alt={authorName} />
           <AvatarFallback>
-            {post.authorName.substring(0, 2).toUpperCase()}
+            {authorName.substring(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1">
-          <div className="font-semibold">{post.authorName}</div>
+          <div className="font-semibold">{authorName}</div>
           <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-            @{post.authorUsername} • {timeAgo}
+            @{authorUsername} • {timeAgo}
             
             {isPCPinned && (
               <>
@@ -220,7 +220,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
       <CardFooter className="p-2 flex justify-between border-t">
         <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
           <MessageCircle className="h-4 w-4" />
-          <span>{post.commentCount}</span>
+          <span>{commentCount}</span>
         </Button>
         <Button 
           variant="ghost" 
@@ -229,7 +229,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
           onClick={() => handlePin('pc')}
         >
           <Heart className={`h-4 w-4 ${isPCPinned ? 'fill-current' : ''}`} />
-          <span>{post.likes}</span>
+          <span>{likes}</span>
         </Button>
         <Button 
           variant="ghost" 

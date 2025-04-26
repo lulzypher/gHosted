@@ -229,17 +229,17 @@ const UserProfile: React.FC = () => {
             )}
 
             {/* Empty State */}
-            {!isLoadingUserPosts && userPosts?.length === 0 && (
+            {!isLoadingUserPosts && (!userPosts || userPosts.length === 0) && (
               <div className="bg-white rounded-xl shadow-sm p-4 text-center">
                 <p className="text-gray-500">No posts yet.</p>
               </div>
             )}
 
             {/* Posts */}
-            {!isLoadingUserPosts && userPosts?.length > 0 && (
+            {!isLoadingUserPosts && userPosts && userPosts.length > 0 && (
               <>
                 {userPosts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard key={post.id || Math.random()} post={post} />
                 ))}
               </>
             )}
