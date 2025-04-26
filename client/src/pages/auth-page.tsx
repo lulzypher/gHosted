@@ -248,8 +248,8 @@ export default function AuthPage() {
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
+              <TabsTrigger value="login">Temporary Login</TabsTrigger>
+              <TabsTrigger value="register">Link Device</TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
@@ -259,7 +259,8 @@ export default function AuthPage() {
                     Welcome to gHosted
                   </CardTitle>
                   <CardDescription className="text-center">
-                    The decentralized social platform
+                    Temporary access for browsing. Your session will end when you log out. 
+                    No data is stored locally on this device.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -463,18 +464,20 @@ export default function AuthPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-center bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent text-3xl font-bold">
-                    Create Account
+                    Link This Device
                   </CardTitle>
                   <CardDescription className="text-center">
-                    Join the decentralized social revolution
+                    Permanently connect this device to your account. Cryptographic keys will be 
+                    stored locally, enabling offline access and content synchronization.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 mb-4">
-                    <h3 className="text-sm font-semibold text-amber-500 mb-1">Development Mode Registration</h3>
+                    <h3 className="text-sm font-semibold text-amber-500 mb-1">Development Mode Device Linking</h3>
                     <p className="text-xs text-muted-foreground">
-                      Create a new account with any details for development testing.
-                      This form generates cryptographic keys just like in production.
+                      In production, you would scan a QR code with your mobile device to link this computer.
+                      For development, you can create a new account or link an existing one.
+                      This process generates and stores cryptographic keys on this device.
                     </p>
                   </div>
                   
@@ -553,10 +556,10 @@ export default function AuthPage() {
                         {registerMutation.isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Creating Account...
+                            Linking Device...
                           </>
                         ) : (
-                          "Create Account"
+                          "Link Device"
                         )}
                       </Button>
                     </form>
