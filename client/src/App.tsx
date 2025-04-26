@@ -14,6 +14,7 @@ import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { IPFSProvider } from '@/contexts/IPFSContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { ConflictResolution } from '@/components/ConflictResolution';
+import { DebugPanel } from '@/components/DebugPanel';
 import HomePageContent from '@/pages/home-page';
 import MessagingPage from '@/pages/messaging';
 import UserProfile from '@/pages/user-profile';
@@ -126,6 +127,8 @@ function App() {
                     {/* Show conflict resolution dialog when needed */}
                     <ConflictResolution />
                     <Toaster />
+                    {/* Debug panel to diagnose session inconsistencies */}
+                    <DebugPanel />
                   </PeerDiscoveryProvider>
                 </P2PProvider>
               </SyncProvider>
