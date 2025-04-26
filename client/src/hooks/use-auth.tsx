@@ -15,9 +15,31 @@ type AuthContextType = {
   loginMutation: UseMutationResult<User, Error, LoginData>;
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<User, Error, InsertUser>;
+  qrLoginMutation: UseMutationResult<User, Error, QrLoginData>;
+  checkQrSession: UseMutationResult<QrSessionStatus, Error, string>;
 };
 
-type LoginData = Pick<InsertUser, "username" | "password">;
+// Extended login data to support username@domain
+type LoginData = {
+  username: string;
+  password: string;
+  domain?: string;
+};
+
+// QR code login data
+type QrLoginData = {
+  sessionId: string;
+  signature: string;
+  publicKey: string;
+  deviceId?: string;
+};
+
+// QR session status
+type QrSessionStatus = {
+  status: 'pending' | 'authenticated' | 'expired' | 'invalid';
+  userId?: number;
+  username?: string;
+};
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -107,6 +129,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // QR code login mutation
+  const qrLoginMutation = useMutation({
+    mutationFn: async (qrData: QrLoginData) => {
+      const res = await apiRequest("POST", "/api/qr-login", qrData);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "QR login failed");
+      }
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Welcome back!",
+        description: `You're now logged in as ${user.displayName || user.username}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "QR login failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Check QR session status
+  const checkQrSession = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await apiRequest("GET", `/api/qr-session/${sessionId}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to check QR session");
+      }
+      return await res.json();
+    },
+    onError: (error: Error) => {
+      console.error("Error checking QR session:", error);
+      return {
+        status: 'error' as 'pending', // Type hack since our status doesn't include 'error'
+        error: error.message
+      };
+    },
+  });
+
   return (
     <AuthContext.Provider
       value={{
@@ -116,6 +183,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginMutation,
         logoutMutation,
         registerMutation,
+        qrLoginMutation,
+        checkQrSession
       }}
     >
       {children}

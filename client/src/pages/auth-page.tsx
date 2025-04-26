@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useCryptoIdentity } from "@/hooks/use-crypto-identity";
 import { Redirect } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -17,11 +18,13 @@ import {
 } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, QrCode, SmartphoneNfc, ServerCrash, User } from "lucide-react";
+import * as QRCode from 'qrcode';
+import { v4 as uuidv4 } from 'uuid';
 
-// Login schema
+// Login schema with support for username@domain
 const loginSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
+  identifier: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
@@ -48,14 +51,22 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { user, loginMutation, registerMutation, qrLoginMutation } = useAuth();
+  const { generateNewKeys } = useCryptoIdentity();
   const [activeTab, setActiveTab] = useState<string>("login");
+  const [loginMethod, setLoginMethod] = useState<'credentials' | 'qr' | 'domainuser'>('credentials');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [qrCheckInterval, setQrCheckInterval] = useState<number | null>(null);
+  const [qrExpires, setQrExpires] = useState<Date | null>(null);
+  const [isQrExpired, setIsQrExpired] = useState<boolean>(false);
+  const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: "",
+      identifier: "",
       password: "",
     },
   });
@@ -79,25 +90,144 @@ export default function AuthPage() {
     return <Redirect to="/" />;
   }
 
+  // Generate QR code for authentication
+  const generateQRCode = async () => {
+    try {
+      // Clear any previous intervals
+      if (qrCheckInterval) {
+        window.clearInterval(qrCheckInterval);
+      }
+      
+      // Generate a new session ID
+      const newSessionId = uuidv4();
+      setSessionId(newSessionId);
+      
+      // Set expiration time (5 minutes from now)
+      const expiration = new Date();
+      expiration.setMinutes(expiration.getMinutes() + 5);
+      setQrExpires(expiration);
+      setIsQrExpired(false);
+      
+      // Create QR code data
+      const qrData = {
+        type: 'ghosted-auth',
+        sessionId: newSessionId,
+        serverUrl: window.location.origin,
+        timestamp: Date.now(),
+        expires: expiration.getTime()
+      };
+      
+      // Generate QR code
+      const qrCodeUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+        errorCorrectionLevel: 'M',
+        margin: 2,
+        scale: 8,
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      });
+      
+      setQrCode(qrCodeUrl);
+      
+      // Set up interval to check for authentication status
+      const intervalId = window.setInterval(() => {
+        // Check if QR code is expired
+        if (expiration.getTime() < Date.now()) {
+          setIsQrExpired(true);
+          window.clearInterval(intervalId);
+          return;
+        }
+        
+        // Check if session is authenticated
+        if (sessionId) {
+          checkQrSession(sessionId);
+        }
+      }, 3000);
+      
+      setQrCheckInterval(intervalId);
+      
+      return qrCodeUrl;
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      return null;
+    }
+  };
+  
+  // Check if QR session is authenticated
+  const checkQrSession = (sessionId: string) => {
+    // This would typically make a call to the server to check if the session has been authenticated
+    // For now, we'll mock this functionality
+    console.log("Checking QR session", sessionId);
+    // TODO: Implement actual session checking with backend
+  };
+  
+  // Handle login form submission with credentials
   const onLoginSubmit = (data: LoginFormValues) => {
-    loginMutation.mutate(data);
+    // Check if it's a username@domain format
+    if (data.identifier.includes('@')) {
+      const [username, domain] = data.identifier.split('@');
+      
+      // Login with domain credentials
+      loginMutation.mutate({
+        username,
+        domain,
+        password: data.password
+      });
+    } else {
+      // Standard login
+      loginMutation.mutate({
+        username: data.identifier,
+        password: data.password
+      });
+    }
+  };
+  
+  // Handle QR code login (for mobile devices that scan the code)
+  const handleQrLogin = () => {
+    if (!sessionId) return;
+    
+    // In a real implementation, the mobile app would sign the session ID with the user's private key
+    // and send it to the server. For now, we'll mock this.
+    qrLoginMutation.mutate({
+      sessionId,
+      signature: "mock-signature", // This would be replaced with a real signature
+      publicKey: "mock-public-key" // This would be replaced with the user's public key
+    });
   };
 
   const onRegisterSubmit = async (data: RegisterFormValues) => {
-    // Generate DID and public key for the user
-    // This would typically be done properly with a secure method
-    // This is a simple placeholder for demonstration
-    const did = `did:ghosted:${Math.random().toString(36).substring(2, 15)}`;
-    const publicKey = `${Math.random().toString(36).substring(2, 15)}.${Math.random().toString(36).substring(2, 15)}`;
-    
-    // Remove passwordConfirm from data before sending to API
-    const { passwordConfirm, ...userData } = data;
-    
-    registerMutation.mutate({
-      ...userData,
-      did,
-      publicKey,
-    });
+    try {
+      // Generate proper cryptographic keys using our utility
+      const keyPair = await generateNewKeys(data.password);
+      
+      // Generate a proper DID from the public key
+      const did = `did:ghosted:${keyPair.publicKey.substring(0, 16)}`;
+      
+      // Remove passwordConfirm from data before sending to API
+      const { passwordConfirm, ...userData } = data;
+      
+      registerMutation.mutate({
+        ...userData,
+        did,
+        publicKey: keyPair.publicKey,
+      });
+    } catch (error) {
+      console.error("Error generating cryptographic keys:", error);
+      
+      // Fallback to simpler key generation if the advanced crypto fails
+      const did = `did:ghosted:${Math.random().toString(36).substring(2, 15)}`;
+      const publicKey = `${Math.random().toString(36).substring(2, 15)}.${Math.random().toString(36).substring(2, 15)}`;
+      
+      // Remove passwordConfirm from data before sending to API
+      const { passwordConfirm, ...userData } = data;
+      
+      registerMutation.mutate({
+        ...userData,
+        did,
+        publicKey,
+      });
+    }
   };
 
   return (
