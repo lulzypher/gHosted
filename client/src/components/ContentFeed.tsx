@@ -18,7 +18,7 @@ export function ContentFeed() {
     await deletePost(cid);
   };
   
-  const handlePin = async (cid: string, type: 'pc' | 'both') => {
+  const handlePin = async (cid: string, type: 'pc' | 'both' | 'light') => {
     try {
       // Make API call to pin content
       await fetch(`/api/pinned-content`, {
@@ -32,11 +32,23 @@ export function ContentFeed() {
         }),
       });
       
+      let message = '';
+      
+      switch(type) {
+        case 'pc':
+          message = 'Content will be preserved on your PC';
+          break;
+        case 'both':
+          message = 'Content will be preserved on both PC and mobile';
+          break;
+        case 'light':
+          message = 'Post metadata saved without large media files';
+          break;
+      }
+      
       toast({
         title: `Content pinned`,
-        description: type === 'pc' 
-          ? 'Content will be preserved on your PC' 
-          : 'Content will be preserved on both PC and mobile',
+        description: message,
       });
       
       // Refresh posts to update UI

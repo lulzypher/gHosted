@@ -18,6 +18,7 @@ export enum PinType {
   LIKE = 'like',      // Alias for LOCAL - used for consistency with UI
   REMOTE = 'remote',  // Pin to remote devices as well (Fire Heart reaction ❤️‍🔥)
   LOVE = 'love',      // The love-heart-fire reaction (alias for REMOTE)
+  LIGHT = 'light',    // Light pin for metadata only, not media content (📌)
   ALL = 'all'         // Matches any type for querying purposes
 }
 
