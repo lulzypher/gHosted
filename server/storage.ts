@@ -76,8 +76,8 @@ export interface IStorage {
   createPost(post: InsertPost): Promise<Post>;
   getPost(id: number): Promise<Post | undefined>;
   getPostByCID(cid: string): Promise<Post | undefined>;
-  getPostsByUser(userId: number): Promise<Post[]>;
-  getFeedPosts(limit?: number, offset?: number): Promise<Post[]>;
+  getPostsByUser(userId: number): Promise<Partial<Post>[]>;
+  getFeedPosts(limit?: number, offset?: number): Promise<Partial<Post>[]>;
   updatePostStats(id: number, likes?: number, comments?: number, shares?: number): Promise<Post>;
   deletePost(id: number): Promise<Post>;
   
@@ -391,18 +391,57 @@ export class DatabaseStorage implements IStorage {
     return post || undefined;
   }
 
-  async getPostsByUser(userId: number): Promise<Post[]> {
-    return await db.select()
+  async getPostsByUser(userId: number): Promise<Partial<Post>[]> {
+    try {
+      console.log(`Database: Fetching posts for user ID ${userId}`);
+      
+      // Only select fields that are guaranteed to exist
+      // This prevents errors if schema changes haven't been applied to the DB
+      const results = await db.select({
+        id: posts.id,
+        userId: posts.userId,
+        content: posts.content,
+        contentCid: posts.contentCid,
+        createdAt: posts.createdAt,
+        likes: posts.likes,
+        comments: posts.comments,
+        shares: posts.shares,
+        isDeleted: posts.isDeleted,
+        isPrivate: posts.isPrivate
+      })
       .from(posts)
       .where(and(
         eq(posts.userId, userId),
         eq(posts.isDeleted, false)
       ))
       .orderBy(desc(posts.createdAt));
+      
+      console.log(`Database: Successfully retrieved ${results.length} posts`);
+      return results;
+    } catch (error) {
+      console.error(`Database: Error fetching posts for user ${userId}:`, error);
+      // Return empty array instead of throwing
+      return [];
+    }
   }
 
-  async getFeedPosts(limit: number = 20, offset: number = 0): Promise<Post[]> {
-    return await db.select()
+  async getFeedPosts(limit: number = 20, offset: number = 0): Promise<Partial<Post>[]> {
+    try {
+      console.log(`Database: Fetching feed posts with limit ${limit}, offset ${offset}`);
+      
+      // Only select fields that are guaranteed to exist
+      const results = await db.select({
+        id: posts.id,
+        userId: posts.userId,
+        content: posts.content,
+        contentCid: posts.contentCid,
+        createdAt: posts.createdAt,
+        likes: posts.likes,
+        comments: posts.comments,
+        shares: posts.shares,
+        isDeleted: posts.isDeleted,
+        isPrivate: posts.isPrivate
+      })
       .from(posts)
       .where(and(
         eq(posts.isDeleted, false),
@@ -411,6 +450,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.createdAt))
       .limit(limit)
       .offset(offset);
+      
+      console.log(`Database: Successfully retrieved ${results.length} feed posts`);
+      return results;
+    } catch (error) {
+      console.error(`Database: Error fetching feed posts:`, error);
+      // Return empty array instead of throwing
+      return [];
+    }
   }
 
   async updatePostStats(id: number, likes?: number, comments?: number, shares?: number): Promise<Post> {
