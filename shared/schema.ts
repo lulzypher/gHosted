@@ -554,6 +554,188 @@ export const websiteHostingRelations = relations(websiteHosting, ({ one }) => ({
   }),
 }));
 
+// Per-user chain head pointer for IPLD-style append-only logs
+export const userChainHeads = pgTable("user_chain_heads", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  headCid: text("head_cid"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertUserChainHeadSchema = createInsertSchema(userChainHeads).pick({
+  userId: true,
+  headCid: true,
+});
+
+// Signed chain entry that links to previous entry
+export const chainEntries = pgTable("chain_entries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  entryCid: text("entry_cid").notNull().unique(),
+  prevCid: text("prev_cid"),
+  payloadCid: text("payload_cid").notNull(),
+  action: text("action").notNull(),
+  signature: text("signature").notNull(),
+  authorDid: text("author_did").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  metadata: jsonb("metadata"),
+});
+
+export const insertChainEntrySchema = createInsertSchema(chainEntries).pick({
+  userId: true,
+  entryCid: true,
+  prevCid: true,
+  payloadCid: true,
+  action: true,
+  signature: true,
+  authorDid: true,
+  metadata: true,
+});
+
+// Group role enum (DAO-style: admin can execute, core can propose, contributor + member can vote)
+export const groupRoleEnum = pgEnum("group_role", ["admin", "core", "contributor", "member"]);
+
+// Proposal type enum
+export const proposalTypeEnum = pgEnum("proposal_type", [
+  "add_member",
+  "remove_member",
+  "change_role",
+  "config_change",
+]);
+
+// Proposal status
+export const proposalStatusEnum = pgEnum("proposal_status", [
+  "pending",
+  "passed",
+  "rejected",
+  "executed",
+]);
+
+// Vote choice
+export const voteChoiceEnum = pgEnum("vote_choice", ["for", "against", "abstain"]);
+
+// Groups: first-class entities with creator identity
+export const groups = pgTable(
+  "groups",
+  {
+    id: serial("id").primaryKey(),
+    creatorId: integer("creator_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueCreatorName: unique().on(table.creatorId, table.name),
+  })
+);
+
+// Group members with in-group handles (User@groupname resolution)
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id),
+    inGroupHandle: text("in_group_handle").notNull(),
+    role: groupRoleEnum("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueMemberHandle: unique().on(table.groupId, table.inGroupHandle),
+  })
+);
+
+export const insertGroupSchema = createInsertSchema(groups).pick({
+  creatorId: true,
+  name: true,
+  displayName: true,
+  description: true,
+});
+
+export const insertGroupMemberSchema = createInsertSchema(groupMembers).pick({
+  groupId: true,
+  userId: true,
+  inGroupHandle: true,
+  role: true,
+});
+
+// DAO-style proposals (members propose, members vote)
+export const groupProposals = pgTable("group_proposals", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  type: proposalTypeEnum("type").notNull(),
+  proposerId: integer("proposer_id").notNull().references(() => users.id),
+  payload: jsonb("payload").notNull(),
+  status: proposalStatusEnum("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  votingEndsAt: timestamp("voting_ends_at").notNull(),
+  executedAt: timestamp("executed_at"),
+});
+
+// Votes on proposals
+export const groupVotes = pgTable(
+  "group_votes",
+  {
+    id: serial("id").primaryKey(),
+    proposalId: integer("proposal_id").notNull().references(() => groupProposals.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id),
+    vote: voteChoiceEnum("vote").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueVote: unique().on(table.proposalId, table.userId),
+  })
+);
+
+// Group chain head (append-only governance log)
+export const groupChainHeads = pgTable("group_chain_heads", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }).unique(),
+  headCid: text("head_cid"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Group chain entries (membership changes, role changes, proposal executions)
+export const groupChainEntries = pgTable("group_chain_entries", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  entryCid: text("entry_cid").notNull().unique(),
+  prevCid: text("prev_cid"),
+  action: text("action").notNull(),
+  payloadCid: text("payload_cid").notNull(),
+  signature: text("signature").notNull(),
+  authorDid: text("author_did").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  metadata: jsonb("metadata"),
+});
+
+export const insertGroupProposalSchema = createInsertSchema(groupProposals).pick({
+  groupId: true,
+  type: true,
+  proposerId: true,
+  payload: true,
+  votingEndsAt: true,
+});
+
+export const insertGroupVoteSchema = createInsertSchema(groupVotes).pick({
+  proposalId: true,
+  userId: true,
+  vote: true,
+});
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  creator: one(users, { fields: [groups.creatorId], references: [users.id] }),
+  members: many(groupMembers),
+  proposals: many(groupProposals),
+  chainEntries: many(groupChainEntries),
+}));
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, { fields: [groupMembers.groupId], references: [groups.id] }),
+  user: one(users, { fields: [groupMembers.userId], references: [users.id] }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -590,3 +772,24 @@ export type InsertConversationParticipant = z.infer<typeof insertConversationPar
 
 export type Follower = typeof followers.$inferSelect;
 export type InsertFollower = z.infer<typeof insertFollowerSchema>;
+
+export type UserChainHead = typeof userChainHeads.$inferSelect;
+export type InsertUserChainHead = z.infer<typeof insertUserChainHeadSchema>;
+
+export type ChainEntry = typeof chainEntries.$inferSelect;
+export type InsertChainEntry = z.infer<typeof insertChainEntrySchema>;
+
+export type Group = typeof groups.$inferSelect;
+export type InsertGroup = z.infer<typeof insertGroupSchema>;
+
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type InsertGroupMember = z.infer<typeof insertGroupMemberSchema>;
+
+export type GroupProposal = typeof groupProposals.$inferSelect;
+export type InsertGroupProposal = z.infer<typeof insertGroupProposalSchema>;
+
+export type GroupVote = typeof groupVotes.$inferSelect;
+export type InsertGroupVote = z.infer<typeof insertGroupVoteSchema>;
+
+export type GroupChainHead = typeof groupChainHeads.$inferSelect;
+export type GroupChainEntry = typeof groupChainEntries.$inferSelect;

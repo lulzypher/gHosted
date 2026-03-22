@@ -99,14 +99,76 @@ This repo includes the **gHosted Advertisement Book** — a technical pitchbook 
 
 ---
 
-## 🚧 Installation & Development (Early Stage)
+## 🚀 Quick Start
 
-> ⚠️ Development is in early prototyping.
+### Requirements
 
-### Requirements:
-- Node.js 18+
-- IPFS daemon (local or embedded)
-- Browser or Electron-based environment
+- **Node.js 18+**
+- **npm** or **pnpm**
 
-### Setup:
-UNFINISH PROJECT
+### Install & Run
+
+```bash
+# Clone and install
+git clone <your-repo-url>
+cd gHosted
+
+npm install
+
+# Start the app (dev server + API)
+npm run dev
+```
+
+Open **http://localhost:5000** in your browser.
+
+### How it runs (local-node model)
+
+gHosted is designed to run **on your own machine**. When you run `npm run dev`:
+
+- The Express server and (optionally) Postgres run **locally on your PC**
+- There is no central cloud; each user runs their own node
+- Content syncs between nodes via IPFS, OrbitDB, and Helia
+- Your data stays with you — Postgres (when used) is for your local node's state only
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | For server features | Postgres connection string (e.g. `postgresql://user:pass@localhost:5432/ghosted`) |
+| `SESSION_SECRET` | **Production only** | Secret for session signing (use a strong random string) |
+| `VITE_IPFS_GATEWAY` | No | Override IPFS gateway for images (default: `https://ipfs.io`) |
+| `VITE_IPFS_API_URL` | No | Override IPFS API URL |
+| `VITE_INFURA_IPFS_*` | No | Infura project ID/secret for IPFS |
+
+**Example .env for full features:**
+```bash
+DATABASE_URL=postgresql://user:pass@localhost:5432/ghosted
+SESSION_SECRET=your-secret-here
+```
+
+Without a database, the app runs in **decentralized mode**: DID-based auth, OrbitDB for posts, and IPFS for storage. All data stays in your browser (IndexedDB + Helia).
+
+### Docker
+
+```bash
+# Build
+docker build -t ghosted .
+
+# Run (requires DATABASE_URL and SESSION_SECRET for server features)
+docker run -p 5000:5000 -e DATABASE_URL=... -e SESSION_SECRET=... ghosted
+```
+
+**Local dev with Postgres:**
+```bash
+docker-compose up -d          # Starts Postgres on localhost:5432
+# Set DATABASE_URL=postgresql://ghosted:ghosted@localhost:5432/ghosted
+npm run dev
+```
+
+### Scripts
+
+| Command      | Description                    |
+| ------------ | ------------------------------ |
+| `npm run dev`  | Start dev server (port 5000)   |
+| `npm run build`| Build for production           |
+| `npm run check`| TypeScript check               |

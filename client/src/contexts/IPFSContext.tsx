@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { IPFSHTTPClient } from 'ipfs-http-client';
 import { initIPFS, getIPFS, getIPFSStats, pinToIPFS, unpinFromIPFS, isUsingMockIPFS } from '@/lib/ipfs';
+import { addPinnedContent, removePinnedContent, getAllPinnedContent } from '@/lib/orbitdb';
 import { IPFSStats, PinnedContent, PinType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from './UserContext';
@@ -40,6 +41,22 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const { toast } = useToast();
   const { user, getCurrentDevice } = useUser();
+
+  const withRetry = async <T,>(task: () => Promise<T>, retries = 3, baseDelayMs = 400): Promise<T> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        return await task();
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries - 1) {
+          const delay = baseDelayMs * Math.pow(2, attempt);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError;
+  };
 
   // Initialize IPFS on component mount
   useEffect(() => {
@@ -139,90 +156,78 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
+  const isDecentralized = Boolean(user?.did && (user?.id === 0 || !user?.id));
+
   // Refresh the pinned contents list
   const refreshPinnedContents = async (): Promise<void> => {
     if (!user) return;
-    
-    try {
-      const response = await fetch(`/api/users/${user.id}/pinned-content`, {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch pinned content');
+
+    if (isDecentralized && user.did) {
+      try {
+        const data = await getAllPinnedContent(user.did);
+        setPinnedContents(data.map((p, i) => ({ ...p, id: i, userId: 0 })));
+      } catch (error) {
+        console.error('Error fetching pinned content:', error);
+        setPinnedContents([]);
       }
-      
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/users/${user.id}/pinned-content`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch pinned content');
       const pinnedData = await response.json();
       setPinnedContents(pinnedData);
     } catch (error) {
       console.error('Error fetching pinned content:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load pinned content.",
-      });
+      toast({ variant: "destructive", title: "Error", description: "Failed to load pinned content." });
     }
   };
 
-  // Pin content to IPFS and save to database
+  // Pin content to IPFS and save to database (or OrbitDB when decentralized)
   const pinContent = async (contentCid: string, postId: number, pinType: PinType, deviceId?: string): Promise<void> => {
     if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Authentication Required",
-        description: "Please log in to pin content.",
-      });
+      toast({ variant: "destructive", title: "Authentication Required", description: "Please log in to pin content." });
       return;
     }
-    
+
     try {
-      // First pin to IPFS if it's not a light pin
       if (pinType !== PinType.LIGHT) {
-        await pinToIPFS(contentCid);
+        await withRetry(() => pinToIPFS(contentCid));
       }
-      // For light pins, we skip pinning the content to IPFS but still save the reference
-      
-      // If device ID wasn't provided, use current device
-      const currentDevice = getCurrentDevice();
-      const effectiveDeviceId = deviceId || currentDevice?.deviceId;
-      
-      // Then save pin info to database
-      await apiRequest('POST', '/api/pinned-content', {
-        userId: user.id,
-        contentCid,
-        pinType,
-        postId,
-        deviceId: effectiveDeviceId
-      });
-      
-      // Refresh pinned contents
+
+      if (isDecentralized && user.did) {
+        await addPinnedContent(user.did, {
+          id: 0,
+          userId: 0,
+          contentCid,
+          postId,
+          pinType,
+          pinnedAt: new Date(),
+        });
+      } else {
+        const currentDevice = getCurrentDevice();
+        const effectiveDeviceId = deviceId || currentDevice?.deviceId;
+        const normalizedPinType = pinType === PinType.LOVE || pinType === PinType.REMOTE ? 'both' : 'pc';
+        await withRetry(() => apiRequest('POST', '/api/pinned-content', {
+          userId: user.id,
+          cid: contentCid,
+          type: normalizedPinType,
+          postId,
+          deviceId: effectiveDeviceId
+        }));
+      }
+
       await refreshPinnedContents();
-      
-      // Update stats
       const updatedStats = await getIPFSStats();
       setStats(updatedStats);
-      
-      let title, description;
-      
-      switch(pinType) {
-        case PinType.LOVE:
-        case PinType.REMOTE:
-          title = "Loved Content";
-          description = "Content has been pinned to all your devices";
-          break;
-        case PinType.LIGHT:
-          title = "Light Pinned";
-          description = "Post metadata saved without large media files";
-          break;
-        default:
-          title = "Liked Content";
-          description = "Content has been pinned to your PC only";
-      }
-      
-      toast({
-        title,
-        description,
-      });
+
+      const titles: Record<string, string> = {
+        [PinType.LOVE]: "Loved Content",
+        [PinType.REMOTE]: "Loved Content",
+        [PinType.LIGHT]: "Light Pinned",
+      };
+      toast({ title: titles[pinType] || "Liked Content", description: "Content pinned." });
     } catch (error) {
       console.error('Error pinning content:', error);
       toast({
@@ -233,14 +238,15 @@ export const IPFSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Unpin content from IPFS and remove from database
+  // Unpin content from IPFS and remove from database (or OrbitDB when decentralized)
   const unpinContent = async (pinnedId: number, contentCid: string): Promise<void> => {
     try {
-      // First remove from database
-      await apiRequest('DELETE', `/api/pinned-content/${pinnedId}`);
-      
-      // Then remove from IPFS
-      await unpinFromIPFS(contentCid);
+      if (isDecentralized && user?.did) {
+        await removePinnedContent(user.did, contentCid);
+      } else {
+        await withRetry(() => apiRequest('DELETE', `/api/pinned-content/${pinnedId}`));
+      }
+      await withRetry(() => unpinFromIPFS(contentCid));
       
       // Refresh pinned contents
       await refreshPinnedContents();

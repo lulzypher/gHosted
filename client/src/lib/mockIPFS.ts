@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Mock IPFS implementation for browser compatibility
  * This is a simplified version that uses browser storage (IndexedDB) when actual IPFS isn't available

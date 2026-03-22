@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { PinType, PinnedContent } from '@/types';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 import Login from './login';
 
 const StorageItemCard: React.FC<{
@@ -75,7 +76,7 @@ const StorageItemCard: React.FC<{
           <div className="h-12 w-12 flex-shrink-0 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
             {item.post?.imageCid ? (
               <img 
-                src={`https://ipfs.io/ipfs/${item.post.imageCid}`}
+                src={ipfsUrl(item.post.imageCid)}
                 alt="Content thumbnail"
                 className="h-full w-full object-cover"
               />

@@ -67,6 +67,16 @@ export interface User {
   updatedAt: Date;
 }
 
+export interface Device {
+  id: number;
+  userId: number;
+  deviceId: string;
+  name: string;
+  type: 'mobile' | 'pc' | 'desktop' | 'browser' | 'server';
+  status?: 'online' | 'offline' | 'syncing';
+  lastSeen?: Date;
+}
+
 // Post interface
 export interface Post {
   id: number;

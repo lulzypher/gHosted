@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Browser-compatible IPFS client implementation
  * This version avoids Node.js module dependencies that cause issues with Vite

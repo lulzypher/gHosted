@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Image, Smile, Send, Loader2, WifiOff } from 'lucide-react';
-import { useOfflineContent } from '@/hooks/use-offline-content';
+import { useDecentralizedFeed } from '@/hooks/use-decentralized-feed';
 import { useAuth } from '@/hooks/use-auth';
 import { useSync } from '@/contexts/SyncContext';
 import { useToast } from '@/hooks/use-toast';
@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 export function CreatePostWithOffline() {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createPost } = useOfflineContent();
+  const { createPost, isCreating } = useDecentralizedFeed();
   const { user } = useAuth();
   const { isOffline } = useSync();
   const { toast } = useToast();
@@ -100,7 +100,7 @@ export function CreatePostWithOffline() {
             type="submit" 
             size="sm" 
             className="bg-[#2374e1] hover:bg-[#2374e1]/90 text-white"
-            disabled={isSubmitting || !content.trim()}
+            disabled={(isSubmitting || isCreating) || !content.trim()}
           >
             {isSubmitting ? (
               <>

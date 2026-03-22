@@ -2,7 +2,26 @@
  * Polyfills for Node.js environment variables that are not available in the browser
  * Used for compatibility with libraries like IPFS that depend on Node.js
  */
-import nodeOsPolyfill from './node-os-polyfill';
+const nodeOsPolyfill = {
+  platform: () => 'browser',
+  cpus: () => [{ model: 'Browser CPU', speed: 2500 }],
+  freemem: () => 1024 * 1024 * 1024,
+  totalmem: () => 4096 * 1024 * 1024,
+  hostname: () => 'browser-host',
+  type: () => 'Browser',
+  release: () => '1.0.0',
+  homedir: () => '/',
+  tmpdir: () => '/tmp',
+  networkInterfaces: () => ({}),
+  arch: () => 'x64',
+  endianness: () => 'LE',
+  loadavg: () => [0, 0, 0],
+  uptime: () => 3600,
+  constants: {
+    signals: { SIGTERM: 15, SIGINT: 2, SIGKILL: 9 },
+    errno: { ENOENT: 2, EACCES: 13, EINVAL: 22 }
+  }
+};
 
 // Make sure this file is imported before any other IPFS-related imports
 if (typeof window !== 'undefined') {

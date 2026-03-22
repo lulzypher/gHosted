@@ -81,6 +81,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cryptoService } from "@/lib/cryptography";
+import { ServerRequiredFallback } from "@/components/ServerRequiredFallback";
+import { ipfsUrl } from "@/lib/ipfsGateway";
 
 type Conversation = {
   id: number;
@@ -169,7 +171,7 @@ const MessageBubble = ({ message, isCurrentUser, otherUser }: { message: Private
       <div className="flex items-end">
         {!isCurrentUser && (
           <Avatar className="h-6 w-6 mr-2">
-            <AvatarImage src={otherUser.avatarCid ? `https://ipfs.io/ipfs/${otherUser.avatarCid}` : ""} />
+            <AvatarImage src={otherUser.avatarCid ? ipfsUrl(otherUser.avatarCid) : ""} />
             <AvatarFallback>{otherUser.displayName?.charAt(0) || otherUser.username?.charAt(0)}</AvatarFallback>
           </Avatar>
         )}
@@ -236,7 +238,7 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
             onClick={() => onSelect(conversation)}
           >
             <Avatar className="h-10 w-10 mr-3">
-              <AvatarImage src={otherParticipant.avatarCid ? `https://ipfs.io/ipfs/${otherParticipant.avatarCid}` : ""} />
+              <AvatarImage src={otherParticipant.avatarCid ? ipfsUrl(otherParticipant.avatarCid) : ""} />
               <AvatarFallback>
                 {otherParticipant.displayName?.charAt(0) || 
                  otherParticipant.username?.charAt(0) || 
@@ -358,7 +360,7 @@ const NewConversationDialog = ({ isOpen, onClose, onStart }: {
                     onClick={() => handleStartConversation(user.id)}
                   >
                     <Avatar className="h-10 w-10 mr-3">
-                      <AvatarImage src={user.avatarCid ? `https://ipfs.io/ipfs/${user.avatarCid}` : ""} />
+                      <AvatarImage src={user.avatarCid ? ipfsUrl(user.avatarCid) : ""} />
                       <AvatarFallback>{user.displayName?.charAt(0) || user.username.charAt(0)}</AvatarFallback>
                     </Avatar>
                     
@@ -394,6 +396,12 @@ const NewConversationDialog = ({ isOpen, onClose, onStart }: {
 const MessagingPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  
+  // Decentralized users (no server session) cannot use messaging
+  const isDecentralized = !!(user?.did && (user?.id === 0 || user?.id == null));
+  if (isDecentralized) {
+    return <ServerRequiredFallback feature="messages" />;
+  }
   const { addMessageListener } = useWebSocket(); // Use our WebSocketContext
   const queryClient = useQueryClient();
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
@@ -835,7 +843,7 @@ const MessagingPage = () => {
                 <div className="flex items-center">
                   <Avatar className="h-10 w-10 mr-3">
                     <AvatarImage 
-                      src={otherParticipant?.avatarCid ? `https://ipfs.io/ipfs/${otherParticipant.avatarCid}` : ""} 
+                      src={otherParticipant?.avatarCid ? ipfsUrl(otherParticipant.avatarCid) : ""} 
                     />
                     <AvatarFallback>
                       {otherParticipant?.displayName?.charAt(0) || otherParticipant?.username?.charAt(0) || "?"}

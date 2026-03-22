@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useToast } from '@/hooks/use-toast';
 import { IPFSNodeConfig } from './IPFSNodeConfig';
 import { 
   Card, 
@@ -42,42 +41,45 @@ interface NetworkStats {
 }
 
 export function WebsiteHosting() {
-  const { toast } = useToast();
-  // These would normally come from the IPFS API through libp2p
-  const [peers, setPeers] = useState<PeerNode[]>([
-    {
-      id: '1',
-      peerId: 'QmHash1',
-      name: 'Alice\'s Node',
-      status: 'online',
-      subdomainPrefix: 'al1ce9',
-      uptime: 86400 * 3 + 3600 * 5 // 3 days, 5 hours
-    },
-    {
-      id: '2',
-      peerId: 'QmHash2',
-      name: 'Bob\'s PC',
-      status: 'online',
-      subdomainPrefix: 'b0b742',
-      uptime: 86400 * 5 + 3600 * 2 // 5 days, 2 hours
-    },
-    {
-      id: '3',
-      peerId: 'QmHash3',
-      name: 'Charlie\'s Server',
-      status: 'syncing',
-      subdomainPrefix: 'ch4rl13',
-      uptime: 3600 * 8 // 8 hours
-    }
-  ]);
+  const [peers, setPeers] = useState<PeerNode[]>([]);
   
   const [networkStats, setNetworkStats] = useState<NetworkStats>({
-    activeNodes: 3,
-    totalPeers: 15,
-    totalContent: 1073741824 * 2.5, // 2.5 GB
-    redundancyFactor: 3.2,
-    averageLatency: 120
+    activeNodes: 0,
+    totalPeers: 0,
+    totalContent: 0,
+    redundancyFactor: 0,
+    averageLatency: 0
   });
+
+  useEffect(() => {
+    const loadHosting = async () => {
+      try {
+        const response = await fetch('/api/website-hosting', { credentials: 'include' });
+        if (!response.ok) return;
+        const data = await response.json();
+        const activeHostingNodes = data.activeHostingNodes || [];
+        setPeers(activeHostingNodes.map((node: any) => ({
+          id: String(node.id),
+          peerId: node.domain || `node-${node.id}`,
+          name: node.name,
+          status: node.status || 'offline',
+          subdomainPrefix: (node.domain || '').split('.')[0] || `node${node.id}`,
+          uptime: node.uptime || 0
+        })));
+        setNetworkStats({
+          activeNodes: data.networkStats?.activeHosts || 0,
+          totalPeers: data.networkStats?.totalNodes || 0,
+          totalContent: 0,
+          redundancyFactor: data.networkStats?.redundancyFactor || 0,
+          averageLatency: data.networkStats?.healthScore || 0
+        });
+      } catch {
+        // keep UI usable even if API unavailable
+      }
+    };
+
+    loadHosting();
+  }, []);
 
   // Format bytes to human-readable format
   const formatBytes = (bytes: number) => {

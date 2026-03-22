@@ -1,11 +1,14 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
-import { Home, User, Users, Bookmark, Settings, Laptop, Smartphone } from 'lucide-react';
+import { useIPFS } from '@/contexts/IPFSContext';
+import { ipfsUrl } from '@/lib/ipfsGateway';
+import { Home, User, Users, Bookmark, Settings, Laptop, UsersRound } from 'lucide-react';
 
 export function LeftSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const { stats } = useIPFS();
   
   const isActive = (path: string) => location === path;
   
@@ -13,6 +16,7 @@ export function LeftSidebar() {
     { icon: Home, label: 'Home', path: '/' },
     { icon: User, label: 'Profile', path: '/profile' },
     { icon: Users, label: 'Users Directory', path: '/users' },
+    { icon: UsersRound, label: 'Groups', path: '/groups' },
     { icon: Bookmark, label: 'Saved Posts', path: '/saved' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
@@ -24,7 +28,7 @@ export function LeftSidebar() {
           <div className="flex-shrink-0 h-11 w-11 rounded-full overflow-hidden border border-[#3a3b3c]">
             {user?.avatarCid ? (
               <img
-                src={`https://ipfs.io/ipfs/${user.avatarCid}`}
+                src={ipfsUrl(user.avatarCid)}
                 alt={user.displayName}
                 className="h-full w-full object-cover"
               />
@@ -64,37 +68,35 @@ export function LeftSidebar() {
       
       <div className="mt-6 px-4">
         <h3 className="px-3 text-xs font-medium text-[#b0b3b8] uppercase tracking-wider mb-2">
-          Device Sync
+          This Device
         </h3>
-        <div className="space-y-2">
-          <div className="flex items-center px-3 py-2 text-sm rounded-md text-[#e4e6eb] bg-[#242526]">
-            <Laptop className="h-4 w-4 mr-3 text-green-500" />
-            <span className="flex-1">Desktop</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400">
-              Synced
-            </span>
-          </div>
-          <div className="flex items-center px-3 py-2 text-sm rounded-md text-[#e4e6eb] bg-[#242526]">
-            <Smartphone className="h-4 w-4 mr-3 text-amber-500" />
-            <span className="flex-1">Mobile</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">
-              Syncing
-            </span>
-          </div>
+        <div className="flex items-center px-3 py-2 text-sm rounded-md text-[#e4e6eb] bg-[#242526]">
+          <Laptop className="h-4 w-4 mr-3 text-green-500" />
+          <span className="flex-1">Local</span>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400">
+            Synced
+          </span>
         </div>
       </div>
       
       <div className="mt-4 px-4">
         <h3 className="px-3 text-xs font-medium text-[#b0b3b8] uppercase tracking-wider mb-2">
-          Local Storage
+          Storage
         </h3>
         <div className="px-3">
           <div className="w-full h-2 rounded-full bg-[#3a3b3c] overflow-hidden">
-            <div className="h-full bg-[#3499f0]" style={{ width: '46%' }}></div>
+            <div 
+              className="h-full bg-[#3499f0] transition-all" 
+              style={{ 
+                width: `${stats?.allocatedSize 
+                  ? Math.min(100, ((stats.totalSize ?? 0) / Math.max(1, stats.allocatedSize)) * 100) 
+                  : 0}%` 
+              }} 
+            />
           </div>
           <div className="flex justify-between text-xs text-[#b0b3b8] mt-1">
-            <span>456 MB used</span>
-            <span>1 GB allocated</span>
+            <span>{stats ? `${((stats.totalSize ?? 0) / (1024 * 1024)).toFixed(0)} MB used` : '—'}</span>
+            <span>{stats?.allocatedSize ? `${(stats.allocatedSize / (1024 * 1024 * 1024)).toFixed(1)} GB` : '—'}</span>
           </div>
         </div>
       </div>

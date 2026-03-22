@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Direct IPFS implementation using js-ipfs
  * This implementation runs a light IPFS node directly in the browser

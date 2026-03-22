@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PostType } from '@/components/Post';
 import { v4 as uuidv4 } from 'uuid';

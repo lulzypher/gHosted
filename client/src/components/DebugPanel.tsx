@@ -5,11 +5,16 @@ import { useEffect, useState } from 'react';
 // We don't need to redeclare these types as they're already in lib.dom.d.ts
 // Just need a workaround for TypeScript in certain contexts
 
+interface DebugPanelProps {
+  /** When true, renders inline instead of fixed overlay (e.g. in Settings) */
+  inline?: boolean;
+}
+
 /**
  * This component shows debug information about the current state
  * to help diagnose inconsistencies between browser contexts
  */
-export const DebugPanel = () => {
+export const DebugPanel = ({ inline = false }: DebugPanelProps) => {
   const { user } = useUser();
   const { ipfs, isIPFSReady, usingMockImplementation, pinnedContents, stats } = useIPFS();
   const [sessionId, setSessionId] = useState<string>('unknown');
@@ -93,7 +98,7 @@ export const DebugPanel = () => {
   }, [ipfs, isIPFSReady]);
   
   return (
-    <div className="fixed bottom-2 right-2 p-2 bg-black/80 text-white text-xs rounded-md z-50 max-w-[300px] max-h-[400px] overflow-auto">
+    <div className={`p-2 text-white text-xs rounded-md max-w-full max-h-[400px] overflow-auto ${inline ? 'bg-gray-900 border border-gray-700' : 'fixed bottom-2 right-2 bg-black/80 z-50'}`}>
       <div className="font-bold mb-1">Debug Info</div>
       <div>Session ID: {sessionId}</div>
       <div>Time: {timestamp}</div>

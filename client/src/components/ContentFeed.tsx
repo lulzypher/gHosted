@@ -1,58 +1,55 @@
-import React from 'react';
-import { useOfflineContent } from '@/hooks/use-offline-content';
+import React, { useState } from 'react';
+import { useDecentralizedFeed } from '@/hooks/use-decentralized-feed';
+import { useUser } from '@/contexts/UserContext';
+import { addPinnedContent } from '@/lib/orbitdb';
 import { PostCard, PostSkeleton } from '@/components/Post';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, WifiOff } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Loader2, RefreshCw, UserPlus, WifiOff } from 'lucide-react';
 import { useSync } from '@/contexts/SyncContext';
-import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { PinType } from '@/types';
 
 export function ContentFeed() {
-  const { posts, loading, createPost, deletePost, refreshPosts } = useOfflineContent();
+  const { user } = useUser();
+  const { posts, loading, deletePost, refreshPosts, follow } = useDecentralizedFeed();
+  const [followDialogOpen, setFollowDialogOpen] = useState(false);
+  const [followDid, setFollowDid] = useState('');
+  const [followLoading, setFollowLoading] = useState(false);
   const { isOffline, triggerSync } = useSync();
-  const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+
   const handleDelete = async (cid: string) => {
     await deletePost(cid);
   };
-  
-  const handlePin = async (cid: string, type: 'pc' | 'both' | 'light') => {
+
+  const handlePin = async (cid: string, type: 'pc' | 'both' | 'light', postData?: { content?: string; authorDid?: string; mediaCid?: string; createdAt?: string }) => {
+    if (!user?.did) return;
     try {
-      // Make API call to pin content
-      await fetch(`/api/pinned-content`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          cid,
-          type,
-        }),
+      const pinType = type === 'both' ? PinType.LOVE : type === 'light' ? PinType.LIGHT : PinType.LIKE;
+      await addPinnedContent(user.did, {
+        id: 0,
+        userId: 0,
+        contentCid: cid,
+        postId: 0,
+        pinType,
+        pinnedAt: new Date(),
+        post: postData ? { content: postData.content, createdAt: postData.createdAt ? new Date(postData.createdAt) : undefined, imageCid: postData.mediaCid, metadata: { authorDid: postData.authorDid } } : undefined,
       });
-      
-      let message = '';
-      
-      switch(type) {
-        case 'pc':
-          message = 'Content will be preserved on your PC';
-          break;
-        case 'both':
-          message = 'Content will be preserved on both PC and mobile';
-          break;
-        case 'light':
-          message = 'Post metadata saved without large media files';
-          break;
-      }
-      
       toast({
-        title: `Content pinned`,
-        description: message,
+        title: 'Content pinned',
+        description: type === 'both' ? 'Preserved on all devices' : type === 'light' ? 'Metadata saved' : 'Preserved on PC',
       });
-      
-      // Refresh posts to update UI
-      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
     } catch (error) {
       console.error('Error pinning content:', error);
       toast({
@@ -63,6 +60,25 @@ export function ContentFeed() {
     }
   };
   
+  const handleFollow = async () => {
+    const did = followDid.trim();
+    if (!did) {
+      toast({ title: 'Enter a DID', variant: 'destructive' });
+      return;
+    }
+    setFollowLoading(true);
+    try {
+      await follow(did);
+      toast({ title: 'Following', description: `Now following ${did.slice(0, 20)}…` });
+      setFollowDid('');
+      setFollowDialogOpen(false);
+    } catch (e) {
+      toast({ title: 'Failed to follow', description: String(e), variant: 'destructive' });
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   const handleRefresh = async () => {
     if (isOffline) {
       toast({
@@ -89,20 +105,48 @@ export function ContentFeed() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Feed</h2>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={handleRefresh}
-          disabled={loading}
-          className="flex items-center gap-1"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh
-        </Button>
+        <div className="flex gap-1">
+          <Dialog open={followDialogOpen} onOpenChange={setFollowDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <UserPlus className="h-4 w-4" />
+                Follow
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Follow by DID</DialogTitle>
+                <DialogDescription>Paste someone&apos;s DID to add their posts to your feed.</DialogDescription>
+              </DialogHeader>
+              <Input
+                placeholder="did:key:z6Mk..."
+                value={followDid}
+                onChange={(e) => setFollowDid(e.target.value)}
+                className="mt-2"
+              />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFollowDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleFollow} disabled={followLoading || !followDid.trim()}>
+                  {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Follow'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={loading}
+            className="gap-1"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+        </div>
       </div>
       
       {isOffline && (
@@ -125,7 +169,7 @@ export function ContentFeed() {
         <div className="space-y-4">
           {posts.map((post) => (
             <PostCard 
-              key={post.cid} 
+              key={post.cid || post.contentCid || ''} 
               post={post} 
               onDelete={handleDelete}
               onPin={handlePin}

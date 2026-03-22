@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'wouter';
 import { Info, ChevronRight } from 'lucide-react';
 import { WebsiteHosting } from './WebsiteHosting';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 
 interface NetworkPeer {
   id: string;
@@ -74,7 +75,7 @@ export function RightSidebar() {
                 <div key={peer.id} className="h-8 w-8 rounded-full ring-2 ring-[#18191a] overflow-hidden">
                   {peer.avatar ? (
                     <img
-                      src={`https://ipfs.io/ipfs/${peer.avatar}`}
+                      src={ipfsUrl(peer.avatar)}
                       alt={peer.name}
                       className="h-full w-full object-cover"
                     />
@@ -138,7 +139,7 @@ export function RightSidebar() {
                 {content.imageCid ? (
                   <div className="aspect-video w-full overflow-hidden relative">
                     <img
-                      src={`https://ipfs.io/ipfs/${content.imageCid}`}
+                      src={ipfsUrl(content.imageCid)}
                       alt={content.title}
                       className="h-full w-full object-cover"
                     />

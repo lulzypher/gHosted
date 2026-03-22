@@ -24,12 +24,8 @@ export function ProtectedRoute({
   }
 
   return (
-    <Route
-      path={path}
-      {...rest}
-      component={props => 
-        user ? <Component {...props} /> : <Redirect to="/auth" />
-      }
-    />
+    <Route path={path} {...rest}>
+      {user ? <Component /> : <Redirect to="/auth" />}
+    </Route>
   );
 }

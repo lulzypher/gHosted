@@ -391,19 +391,6 @@ export function createKeyFingerprint(publicKey: string): string {
 // Encrypt a message for secure transmission
 export async function encryptMessage(message: string, recipientPublicKey: string): Promise<string> {
   try {
-    // If we're in development mode and the recipient's key is our placeholder,
-    // we'll use a simplified encryption to avoid errors
-    if (recipientPublicKey === "DEFAULT_PUBLIC_KEY") {
-      console.log("Using development mode encryption");
-      // Simple Base64 encoding as a placeholder for actual encryption
-      return JSON.stringify({
-        encryptedKey: "dev-mode-key",
-        iv: "dev-mode-iv",
-        encryptedMessage: btoa(message),
-        mode: "development"
-      });
-    }
-    
     // For efficient encryption of longer messages, we use a hybrid approach:
     // 1. Generate a random symmetric key
     // 2. Encrypt the message with the symmetric key
@@ -494,26 +481,11 @@ export async function encryptMessage(message: string, recipientPublicKey: string
         return bufferToBase64(combinedBuffer);
       } catch (keyError) {
         console.error('Public key processing error:', keyError);
-        
-        // Fallback to development mode encryption if key import fails
-        console.log("Falling back to development mode encryption due to key error");
-        return JSON.stringify({
-          encryptedKey: "fallback-dev-key",
-          iv: "fallback-dev-iv",
-          encryptedMessage: btoa(message),
-          mode: "fallback"
-        });
+        throw new Error('Failed to import recipient key');
       }
     } catch (cryptoError) {
       console.error('Crypto API error:', cryptoError);
-      
-      // Last resort fallback
-      return JSON.stringify({
-        encryptedKey: "emergency-fallback-key",
-        iv: "emergency-fallback-iv",
-        encryptedMessage: btoa(message),
-        mode: "emergency"
-      });
+      throw new Error('Crypto API encryption failure');
     }
   } catch (error) {
     console.error('Error encrypting message:', error);
@@ -524,22 +496,6 @@ export async function encryptMessage(message: string, recipientPublicKey: string
 // Decrypt a message received from another user
 export async function decryptMessage(encryptedData: string, privateKeyBase64: string): Promise<string> {
   try {
-    // Check if this is a JSON string (development mode message)
-    if (encryptedData.startsWith('{') && encryptedData.endsWith('}')) {
-      try {
-        const jsonData = JSON.parse(encryptedData);
-        
-        // Check if this is one of our development mode messages
-        if (jsonData.mode === 'development' || jsonData.mode === 'fallback' || jsonData.mode === 'emergency') {
-          console.log("Decrypting development mode message");
-          return atob(jsonData.encryptedMessage);
-        }
-      } catch (jsonError) {
-        // Not valid JSON, continue with normal decryption
-        console.log("Not a valid JSON message, proceeding with standard decryption");
-      }
-    }
-    
     try {
       // Parse the combined encrypted data
       const combinedBuffer = base64ToBuffer(encryptedData);
@@ -602,9 +558,7 @@ export async function decryptMessage(encryptedData: string, privateKeyBase64: st
       return new TextDecoder().decode(decryptedBuffer);
     } catch (cryptoError) {
       console.error('Crypto decryption error:', cryptoError);
-      
-      // As a last resort, return a placeholder message
-      return "[Encrypted message - cannot decrypt]";
+      throw new Error('Crypto API decryption failure');
     }
   } catch (error) {
     console.error('Error decrypting message:', error);

@@ -22,13 +22,16 @@ import {
   reactionTypeEnum,
   messageStatusEnum,
   encryptionTypeEnum,
-  followers
+  followers,
+  users,
+  groupMembers
 } from "@shared/schema";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { setupPeerServer, getPeersOnSameNetwork, connectedPeers } from "./peerServer";
 import { setupAuth } from "./auth";
+import { deterministicCid, buildChainLinkSeed, buildGroupChainLinkSeed } from "./chain";
 
 // Helper utility for generating random IDs
 function randomId(): string {
@@ -50,6 +53,7 @@ interface QRSession {
 
 // Store QR sessions in memory (in production, use Redis or database)
 const qrSessions = new Map<string, QRSession>();
+const hostingPermissions = new Map<number, { friendUserId: number; maxPinnedCids: number; canHostProfile: boolean; canHostMedia: boolean; createdAt: string }[]>();
 
 // Clean up expired sessions periodically
 setInterval(() => {
@@ -66,6 +70,34 @@ setInterval(() => {
 }, 60000); // Run cleanup every minute
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const appendUserChainEvent = async (params: {
+    userId: number;
+    action: string;
+    payloadCid: string;
+    signature: string;
+    authorDid: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    const previousHead = await storage.getUserChainHead(params.userId);
+    const entrySource = `${buildChainLinkSeed(
+      params.userId,
+      params.action,
+      params.payloadCid,
+      previousHead?.headCid || null
+    )}:${new Date().toISOString()}`;
+    const entryCid = deterministicCid(entrySource);
+    await storage.appendChainEntry({
+      userId: params.userId,
+      entryCid,
+      prevCid: previousHead?.headCid || null,
+      payloadCid: params.payloadCid,
+      action: params.action,
+      signature: params.signature,
+      authorDid: params.authorDid,
+      metadata: params.metadata || null
+    });
+  };
+
   const httpServer = createServer(app);
   
   // Setup authentication
@@ -306,7 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Only include open connections
                 if (conn.readyState === WebSocket.OPEN) {
                   peers.push({
-                    id: conn.connectionId,
+                    id: (conn as any).connectionId,
                     // @ts-ignore
                     deviceType: conn.deviceType || 'unknown',
                     // @ts-ignore
@@ -480,6 +512,262 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AUTH ROUTES are now handled by setupAuth(app)
   
+  // GROUPS API
+  app.post("/api/groups", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { name, displayName, description } = req.body;
+      if (!name || !displayName) return res.status(400).json({ message: "name and displayName required" });
+      const existing = await storage.getGroupByCreatorAndName(req.user!.id, name);
+      if (existing) return res.status(400).json({ message: "You already have a group with this name" });
+      const group = await storage.createGroup({
+        creatorId: req.user!.id,
+        name: name.trim().toLowerCase(),
+        displayName: displayName.trim(),
+        description: description?.trim() || null,
+      });
+      await storage.addGroupMember({
+        groupId: group.id,
+        userId: req.user!.id,
+        inGroupHandle: req.user!.username,
+        role: "admin",
+      });
+      res.status(201).json(group);
+    } catch (e) {
+      console.error("Create group error:", e);
+      res.status(500).json({ message: "Error creating group" });
+    }
+  });
+
+  app.get("/api/groups", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const created = await storage.getGroupsByCreator(req.user!.id);
+      const memberOf = await storage.getGroupsForUser(req.user!.id);
+      const seen = new Set<number>();
+      const all = [...created];
+      for (const g of memberOf) {
+        if (!seen.has(g.id)) {
+          seen.add(g.id);
+          all.push(g);
+        }
+      }
+      res.json(all);
+    } catch (e) {
+      console.error("List groups error:", e);
+      res.status(500).json({ message: "Error listing groups" });
+    }
+  });
+
+  app.get("/api/groups/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      res.json(group);
+    } catch (e) {
+      res.status(500).json({ message: "Error fetching group" });
+    }
+  });
+
+  app.get("/api/groups/:id/members", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const members = await storage.getGroupMembers(id);
+      res.json(members.map((m) => ({ ...m, password: undefined })));
+    } catch (e) {
+      res.status(500).json({ message: "Error fetching members" });
+    }
+  });
+
+  app.post("/api/groups/:id/members", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const groupId = parseInt(req.params.id);
+      const { userId, inGroupHandle } = req.body;
+      if (!userId || !inGroupHandle) return res.status(400).json({ message: "userId and inGroupHandle required" });
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.creatorId !== req.user!.id) return res.status(403).json({ message: "Only creator can add members" });
+      const member = await storage.addGroupMember({
+        groupId,
+        userId: parseInt(userId),
+        inGroupHandle: inGroupHandle.trim(),
+        role: "member",
+      });
+      res.status(201).json(member);
+    } catch (e) {
+      console.error("Add member error:", e);
+      res.status(500).json({ message: "Error adding member" });
+    }
+  });
+
+  app.delete("/api/groups/:id/members/:userId", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const groupId = parseInt(req.params.id);
+      const userId = parseInt(req.params.userId);
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.creatorId !== req.user!.id) return res.status(403).json({ message: "Only creator can remove members" });
+      const ok = await storage.removeGroupMember(groupId, userId);
+      if (!ok) return res.status(404).json({ message: "Member not found" });
+      res.status(204).send();
+    } catch (e) {
+      res.status(500).json({ message: "Error removing member" });
+    }
+  });
+
+  // DAO proposals and voting
+  app.get("/api/groups/:id/proposals", async (req: Request, res: Response) => {
+    try {
+      const groupId = parseInt(req.params.id);
+      const status = req.query.status as string | undefined;
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const proposals = await storage.getProposalsByGroup(groupId, status);
+      res.json(proposals);
+    } catch (e) {
+      res.status(500).json({ message: "Error fetching proposals" });
+    }
+  });
+
+  app.post("/api/groups/:id/proposals", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const groupId = parseInt(req.params.id);
+      const { type, payload, votingEndsAt } = req.body;
+      if (!type || !payload || !votingEndsAt) return res.status(400).json({ message: "type, payload, votingEndsAt required" });
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const members = await storage.getGroupMembers(groupId);
+      const myMembership = members.find((m: { userId: number }) => m.userId === req.user!.id);
+      if (!myMembership) return res.status(403).json({ message: "Must be a member to propose" });
+      if (!["admin", "core"].includes(myMembership.role)) return res.status(403).json({ message: "Only admins and core members can propose" });
+      const proposal = await storage.createProposal({
+        groupId,
+        type: type as "add_member" | "remove_member" | "change_role" | "config_change",
+        proposerId: req.user!.id,
+        payload,
+        votingEndsAt: new Date(votingEndsAt),
+      });
+      res.status(201).json(proposal);
+    } catch (e) {
+      console.error("Create proposal error:", e);
+      res.status(500).json({ message: "Error creating proposal" });
+    }
+  });
+
+  app.post("/api/groups/:id/proposals/:proposalId/vote", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const groupId = parseInt(req.params.id);
+      const proposalId = parseInt(req.params.proposalId);
+      const { vote } = req.body;
+      if (!["for", "against", "abstain"].includes(vote)) return res.status(400).json({ message: "vote must be for, against, or abstain" });
+      const proposal = await storage.getProposal(proposalId);
+      if (!proposal || proposal.groupId !== groupId) return res.status(404).json({ message: "Proposal not found" });
+      if (proposal.status !== "pending") return res.status(400).json({ message: "Proposal is no longer open for voting" });
+      if (new Date() > proposal.votingEndsAt) return res.status(400).json({ message: "Voting has ended" });
+      const members = await storage.getGroupMembers(groupId);
+      if (!members.some((m: { userId: number }) => m.userId === req.user!.id)) return res.status(403).json({ message: "Must be a member to vote" });
+      const existing = await storage.getVote(proposalId, req.user!.id);
+      if (existing) return res.status(400).json({ message: "You have already voted" });
+      const created = await storage.createVote({ proposalId, userId: req.user!.id, vote: vote as "for" | "against" | "abstain" });
+      res.status(201).json(created);
+    } catch (e) {
+      console.error("Vote error:", e);
+      res.status(500).json({ message: "Error recording vote" });
+    }
+  });
+
+  app.post("/api/groups/:id/proposals/:proposalId/tally", async (req: Request, res: Response) => {
+    try {
+      const proposalId = parseInt(req.params.proposalId);
+      const proposal = await storage.getProposal(proposalId);
+      if (!proposal || proposal.groupId !== parseInt(req.params.id)) return res.status(404).json({ message: "Proposal not found" });
+      if (proposal.status !== "pending") return res.json(proposal);
+      if (new Date() <= proposal.votingEndsAt) return res.json(proposal);
+      const votes = await storage.getVotesByProposal(proposalId);
+      let forCount = 0, againstCount = 0;
+      for (const v of votes) {
+        if (v.vote === "for") forCount++;
+        else if (v.vote === "against") againstCount++;
+      }
+      const status = forCount > againstCount ? "passed" : "rejected";
+      const updated = await storage.updateProposalStatus(proposalId, status);
+      res.json(updated);
+    } catch (e) {
+      res.status(500).json({ message: "Error tallying proposal" });
+    }
+  });
+
+  app.post("/api/groups/:id/proposals/:proposalId/execute", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const groupId = parseInt(req.params.id);
+      const proposalId = parseInt(req.params.proposalId);
+      const proposal = await storage.getProposal(proposalId);
+      if (!proposal || proposal.groupId !== groupId) return res.status(404).json({ message: "Proposal not found" });
+      if (proposal.status !== "passed") return res.status(400).json({ message: "Proposal must be passed to execute" });
+      const members = await storage.getGroupMembers(groupId);
+      const me = members.find((m: { userId: number }) => m.userId === req.user!.id);
+      if (!me || me.role !== "admin") return res.status(403).json({ message: "Only admins can execute" });
+      if (proposal.type === "add_member") {
+        const { userId, inGroupHandle } = proposal.payload as { userId: number; inGroupHandle: string };
+        await storage.addGroupMember({ groupId, userId, inGroupHandle, role: "member" });
+      } else if (proposal.type === "remove_member") {
+        const { userId } = proposal.payload as { userId: number };
+        await storage.removeGroupMember(groupId, userId);
+      } else if (proposal.type === "change_role") {
+        const { userId, role } = proposal.payload as { userId: number; role: string };
+        const existing = members.find((m: { userId: number }) => m.userId === userId);
+        if (!existing) return res.status(404).json({ message: "Member not found" });
+        await db.update(groupMembers).set({ role: role as "admin" | "core" | "contributor" | "member" }).where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+      }
+      await storage.updateProposalStatus(proposalId, "executed", new Date());
+      res.json({ message: "Executed" });
+    } catch (e) {
+      console.error("Execute error:", e);
+      res.status(500).json({ message: "Error executing proposal" });
+    }
+  });
+
+  app.get("/api/groups/:id/chain", async (req: Request, res: Response) => {
+    try {
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const entries = await storage.getGroupChainEntries(groupId);
+      res.json(entries);
+    } catch (e) {
+      res.status(500).json({ message: "Error fetching chain" });
+    }
+  });
+
+  // User@groupname resolution
+  app.get("/api/resolve-handle", async (req: Request, res: Response) => {
+    try {
+      const groupId = req.query.groupId as string;
+      const handle = req.query.handle as string;
+      if (!groupId || !handle) return res.status(400).json({ message: "groupId and handle required" });
+      const gid = parseInt(groupId);
+      const user = await storage.resolveUserInGroup(gid, handle.trim());
+      if (!user) return res.status(404).json({ message: "User not found in group" });
+      res.json({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        did: user.did,
+        avatarCid: user.avatarCid,
+      });
+    } catch (e) {
+      res.status(500).json({ message: "Error resolving handle" });
+    }
+  });
+  
   // USER ROUTES
   
   // Search users for messaging - this route must come BEFORE the /:id route
@@ -558,6 +846,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const post = await storage.createPost(postData);
+      const author = await storage.getUser(postData.userId);
+      if (author) {
+        await appendUserChainEvent({
+          userId: postData.userId,
+          action: "post:create",
+          payloadCid: postData.contentCid,
+          signature: postData.signature || "unsigned",
+          authorDid: author.did,
+          metadata: { postId: post.id }
+        });
+      }
       
       // Notify user's connections about new post
       broadcastToUser(postData.userId, {
@@ -632,8 +931,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const nodeData = insertNodeSchema.parse({
         ...req.body,
-        role: 'device', // Set role to 'device'
-        status: 'active' // Default status
+        role: 'mobile',
+        status: 'online'
       });
       const node = await storage.createNode(nodeData);
       res.status(201).json(node);
@@ -683,14 +982,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { cid, type } = req.body;
+      const { cid, contentCid, type, pinType, postId } = req.body;
+      const effectiveCid = cid || contentCid;
+      const effectivePinType = type || pinType || 'pc';
       
-      if (!cid) {
+      if (!effectiveCid) {
         return res.status(400).json({ message: "Content CID is required" });
       }
       
-      // Find the post by CID
-      const post = await storage.getPostByCID(cid);
+      // Find the post by CID, optionally falling back to explicit postId
+      const post = postId ? await storage.getPost(Number(postId)) : await storage.getPostByCID(effectiveCid);
       if (!post) {
         return res.status(404).json({ message: "Post not found with this CID" });
       }
@@ -701,7 +1002,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         postId: post.id,
         reactionType: 'like' as const, // Using 'as const' to ensure it matches the enum type
         pinToPC: true,        // PC pinning is always enabled
-        pinToMobile: type === 'both' // Mobile pinning depends on the pin type
+        pinToMobile: effectivePinType === 'both' || effectivePinType === 'remote' || effectivePinType === 'love' || effectivePinType === 'all'
       };
       
       // Create or update the reaction
@@ -716,7 +1017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             username: req.user.username,
             displayName: req.user.displayName,
             postContent: post.content.substring(0, 50) + (post.content.length > 50 ? "..." : ""),
-            pinType: type
+            pinType: effectivePinType
           }
         });
       }
@@ -729,7 +1030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           postId: post.id,
           cid: post.contentCid,
           pinToPC: true,
-          pinToMobile: type === 'both'
+          pinToMobile: reactionData.pinToMobile
         }
       });
       
@@ -821,6 +1122,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Server error fetching pinned content" });
     }
   });
+
+  app.get("/api/users/:userId/pin-health", async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+      const health = await storage.getUserPinHealth(userId);
+      res.status(200).json(health);
+    } catch (error) {
+      console.error("Error fetching pin health:", error);
+      res.status(500).json({ message: "Server error fetching pin health" });
+    }
+  });
   // FOLLOW/UNFOLLOW ROUTES
   // Follow a user
   app.post('/api/users/:userId/follow', async (req: Request, res: Response) => {
@@ -865,6 +1177,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         followeeId: followeeId
       }).returning();
 
+      await appendUserChainEvent({
+        userId: currentUser.id,
+        action: "follow:create",
+        payloadCid: deterministicCid(`${currentUser.id}->${followeeId}`),
+        signature: "server-verified-session",
+        authorDid: currentUser.did,
+        metadata: { followeeId }
+      });
+
       res.status(201).json(follow[0]);
     } catch (error) {
       console.error('Error following user:', error);
@@ -896,6 +1217,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!result.length) {
         return res.status(404).json({ message: 'Follow relationship not found' });
       }
+
+      await appendUserChainEvent({
+        userId: currentUser.id,
+        action: "follow:delete",
+        payloadCid: deterministicCid(`${currentUser.id}-/->${followeeId}`),
+        signature: "server-verified-session",
+        authorDid: currentUser.did,
+        metadata: { followeeId }
+      });
 
       res.status(200).json({ message: 'Unfollowed successfully' });
     } catch (error) {
@@ -993,12 +1323,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).json({ 
       status: 'ok', 
       time: new Date().toISOString(),
-      wsPath: '/api/ws',
+      wsPath: '/ws',
       wsConnections: wsConnections.size
     });
   });
 
   // WEBSITE HOSTING ROUTES
+
+  app.get("/api/hosting-permissions", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    res.status(200).json(hostingPermissions.get(req.user!.id) || []);
+  });
+
+  app.post("/api/hosting-permissions", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const schema = z.object({
+      friendUserId: z.number().int().positive(),
+      maxPinnedCids: z.number().int().positive().max(20000).default(500),
+      canHostProfile: z.boolean().default(true),
+      canHostMedia: z.boolean().default(false)
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: fromZodError(parsed.error).message });
+    }
+
+    const ownerId = req.user!.id;
+    const existing = hostingPermissions.get(ownerId) || [];
+    const withoutFriend = existing.filter((item) => item.friendUserId !== parsed.data.friendUserId);
+    const next = [...withoutFriend, { ...parsed.data, createdAt: new Date().toISOString() }];
+    hostingPermissions.set(ownerId, next);
+    res.status(201).json(next);
+  });
+
+  app.delete("/api/hosting-permissions/:friendUserId", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    const ownerId = req.user!.id;
+    const friendUserId = parseInt(req.params.friendUserId, 10);
+    const existing = hostingPermissions.get(ownerId) || [];
+    hostingPermissions.set(ownerId, existing.filter((item) => item.friendUserId !== friendUserId));
+    res.status(200).json({ success: true });
+  });
   
   // Get website hosting status for the current user
   app.get("/api/website-hosting", async (req: Request, res: Response) => {
@@ -1057,7 +1430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Calculate health score (avg of all hosting health)
       const healthScore = activeHostings.length > 0
-        ? Math.floor(activeHostings.reduce((sum, h) => sum + h.health, 0) / activeHostings.length)
+        ? Math.floor(activeHostings.reduce((sum, h) => sum + (h.health ?? 0), 0) / activeHostings.length)
         : 0;
       
       // Filter out nodes that are already hosting
@@ -1237,8 +1610,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register a peer connection
   app.post("/api/peer-connections", async (req: Request, res: Response) => {
     try {
-      const connectionData = insertPeerConnectionSchema.parse(req.body);
-      const connection = await storage.createPeerConnection(connectionData);
+      const connectionData = insertNodeConnectionSchema.parse(req.body);
+      const connection = await storage.createNodeConnection(connectionData);
       res.status(201).json(connection);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1258,7 +1631,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Status is required" });
       }
       
-      const connection = await storage.updatePeerConnectionStatus(connectionId, status);
+      const connection = await storage.updateNodeConnectionStatus(connectionId, status);
       res.status(200).json(connection);
     } catch (error) {
       res.status(500).json({ message: "Server error updating peer connection" });
@@ -1269,7 +1642,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/peer-connections", async (req: Request, res: Response) => {
     try {
       const userId = parseInt(req.params.userId);
-      const connections = await storage.getPeerConnectionsByUser(userId);
+      const sourceConnections = await storage.getNodeConnectionsBySourceNode(userId);
+      const targetConnections = await storage.getNodeConnectionsByTargetNode(userId);
+      const connections = [...sourceConnections, ...targetConnections];
       res.status(200).json(connections);
     } catch (error) {
       res.status(500).json({ message: "Server error fetching peer connections" });
@@ -1604,44 +1979,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { conversationId } = req.params;
       const userId = req.user.id;
       
-      // Special handling for development mode
-      let messageData;
-      if (req.body.content && !req.body.signature && process.env.NODE_ENV !== 'production') {
-        console.log("Development mode message detected");
-        
-        // Find recipient from conversation participants
-        const participants = await storage.getConversationParticipants(conversationId);
-        const recipient = participants.find(p => p.userId !== userId);
-        
-        if (!recipient) {
-          return res.status(400).json({ message: "Cannot determine message recipient" });
-        }
-        
-        // Create a development mode message with dummy encryption values
-        const dummyEncryptedContent = JSON.stringify({
-          mode: "development",
-          encryptedMessage: Buffer.from(req.body.content).toString('base64')
-        });
-        
-        messageData = {
-          senderId: userId,
-          recipientId: recipient.userId,
-          conversationId,
-          encryptedContent: dummyEncryptedContent,
-          content: req.body.content, // For development mode only
-          encryptionType: "hybrid" as "hybrid", // Force the correct enum type
-          iv: 'development-mode-iv',
-          signature: 'development-mode-signature',
-          status: 'sent'
-        };
-      } else {
-        // Normal production validation
-        messageData = insertPrivateMessageSchema.parse({
-          ...req.body,
-          senderId: userId,
-          conversationId
-        });
-      }
+      const messageData = insertPrivateMessageSchema.parse({
+        ...req.body,
+        senderId: userId,
+        conversationId
+      });
       
       // Ensure conversation exists
       const conversation = await storage.getConversationByConversationId(conversationId);
@@ -1783,6 +2125,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching unread count:", error);
       res.status(500).json({ message: "Server error fetching unread count" });
+    }
+  });
+
+  // USER CHAIN ROUTES
+  app.get("/api/users/:userId/chain", async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+      const head = await storage.getUserChainHead(userId);
+      const entries = await storage.getChainEntriesByUser(userId, 200);
+      res.status(200).json({ head, entries });
+    } catch (error) {
+      console.error("Error fetching user chain:", error);
+      res.status(500).json({ message: "Server error fetching user chain" });
     }
   });
 

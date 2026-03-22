@@ -15,12 +15,14 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { useToast } from '@/hooks/use-toast';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 
 export interface PostType {
-  id: number;
-  contentCid?: string;  // From API
-  cid?: string;        // Local naming
+  id?: number;
+  contentCid?: string;  // From API / OrbitDB
+  cid?: string;        // Local naming (alias for contentCid)
   authorId?: number;
+  authorDid?: string;   // Decentralized author identity
   userId?: number;     // From API
   authorName?: string;
   authorUsername?: string;
@@ -44,7 +46,7 @@ export interface PostType {
 interface PostCardProps {
   post: PostType;
   onDelete?: (cid: string) => void;
-  onPin?: (cid: string, type: 'pc' | 'both' | 'light') => void;
+  onPin?: (cid: string, type: 'pc' | 'both' | 'light', post?: Partial<PostType>) => void;
 }
 
 export function PostCard({ post, onDelete, onPin }: PostCardProps) {
@@ -52,14 +54,14 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const { toast } = useToast();
   const { isContentPinned } = useIPFS();
   
-  // Normalize post data to handle different field names from API vs local
+  // Normalize post data to handle different field names from API vs local vs OrbitDB
   const postCid = post.cid || post.contentCid || '';
   const authorId = post.authorId || post.userId || 0;
-  const authorName = post.authorName || post.displayName || post.username || 'Unknown User';
-  const authorUsername = post.authorUsername || post.username || 'unknown';
+  const authorName = post.authorName || post.displayName || post.username || (post.authorDid ? `${post.authorDid.slice(0, 12)}…` : 'Unknown User');
+  const authorUsername = post.authorUsername || post.username || (post.authorDid ? post.authorDid.slice(0, 16) : 'unknown');
   const likes = post.likes || 0;
   const commentCount = post.commentCount || post.comments || 0;
-  const mediaUrl = post.mediaUrl || (post.mediaCid ? `https://ipfs.io/ipfs/${post.mediaCid}` : '');
+  const mediaUrl = post.mediaUrl || (post.mediaCid ? ipfsUrl(post.mediaCid) : '');
   const isDeleted = post.deleted || post.isDeleted || false;
   const hasMedia = !!mediaUrl || !!post.mediaCid;
   
@@ -105,7 +107,7 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
   const handlePin = (type: 'pc' | 'both' | 'light') => {
     if (!onPin || !postCid) return;
     
-    onPin(postCid, type);
+    onPin(postCid, type, { content: post.content, authorDid: post.authorDid, mediaCid: post.mediaCid, createdAt: post.createdAt });
     
     if (type === 'pc') {
       setIsPCPinned(true);
@@ -366,13 +368,20 @@ export function PostCard({ post, onDelete, onPin }: PostCardProps) {
         <Button 
           variant="ghost" 
           size="sm" 
-          className="text-muted-foreground"
-          onClick={() => toast({
-            title: "Bookmark",
-            description: "Bookmark functionality coming soon",
-          })}
+          className={`text-muted-foreground gap-1 ${isLightPinned ? 'text-[#3499f0]' : ''}`}
+          onClick={() => {
+            if (onPin && postCid) {
+              onPin(postCid, 'light', { content: post.content, authorDid: post.authorDid, mediaCid: post.mediaCid, createdAt: post.createdAt });
+              setIsLightPinned(true);
+              toast({
+                title: "Saved",
+                description: "Added to your saved posts",
+              });
+            }
+          }}
         >
-          <Bookmark className="h-4 w-4" />
+          <Bookmark className={`h-4 w-4 ${isLightPinned ? 'fill-current' : ''}`} />
+          <span>{isLightPinned ? 'Saved' : 'Save'}</span>
         </Button>
       </CardFooter>
     </Card>

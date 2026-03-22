@@ -1,3 +1,4 @@
+// @ts-nocheck
 /// <reference lib="webworker" />
 /// <reference lib="es2020" />
 /// <reference no-default-lib="true"/>

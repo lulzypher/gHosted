@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useOrbitDB } from '@/contexts/OrbitDBContext';
 import { Post, User, PinnedContent } from '@/types';
-import { addPost, getAllPosts, addUser, getUser, updateProfile, getProfile, addPinnedContent, removePinnedContent, getAllPinnedContent } from '@/lib/orbitdb';
+import { addPost, getAllPosts, addUser, getUser, updateProfile, getProfile, addPinnedContent, removePinnedContent, getAllPinnedContent, type DecentralizedPost } from '@/lib/orbitdb';
 import { useUser } from '@/contexts/UserContext';
 
 interface UseOrbitDBResult {
@@ -41,7 +41,17 @@ export const useOrbitDBOperations = (): UseOrbitDBResult => {
     setError(null);
     
     try {
-      const hash = await addPost(user.did, post);
+      const dp: DecentralizedPost = {
+        contentCid: (post as { contentCid?: string }).contentCid || `local-${Date.now()}`,
+        authorDid: user.did,
+        content: (post as { content?: string }).content || '',
+        mediaCid: (post as { mediaCid?: string }).mediaCid,
+        createdAt: (() => {
+          const c = (post as { createdAt?: string | Date }).createdAt;
+          return c instanceof Date ? c.toISOString() : (c || new Date().toISOString());
+        })(),
+      };
+      const hash = await addPost(user.did, dp);
       return hash;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error adding post to OrbitDB';
@@ -62,7 +72,17 @@ export const useOrbitDBOperations = (): UseOrbitDBResult => {
     setError(null);
     
     try {
-      const posts = await getAllPosts(user.did);
+      const decPosts = await getAllPosts(user.did);
+      const posts = decPosts.map((p) =>
+        ({
+          id: 0,
+          userId: 0,
+          content: p.content,
+          contentCid: p.contentCid,
+          createdAt: p.createdAt,
+          updatedAt: new Date(p.createdAt),
+        }) as unknown as Post
+      );
       return posts;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error getting posts from OrbitDB';

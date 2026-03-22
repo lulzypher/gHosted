@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getUnresolvedConflicts, resolveConflict } from '@/lib/localStore';
+import { useUser } from '@/contexts/UserContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,13 +22,17 @@ interface ConflictData {
 }
 
 export function ConflictResolution() {
+  const { user } = useUser();
   const [conflicts, setConflicts] = useState<ConflictData[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState<string | null>(null);
-  
-  // Load conflicts
+
+  const isDecentralized = Boolean(user?.did && (user?.id === 0 || !user?.id));
+
+  // Load conflicts (skip when decentralized - no server sync)
   useEffect(() => {
+    if (isDecentralized) return;
     const checkForConflicts = async () => {
       try {
         setLoading(true);
@@ -52,8 +57,10 @@ export function ConflictResolution() {
     // Check for new conflicts periodically
     const interval = setInterval(checkForConflicts, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isDecentralized]);
   
+  if (isDecentralized) return null;
+
   // Handle resolving a conflict
   const handleResolve = async (conflictId: string, resolution: 'local' | 'remote' | 'merged') => {
     try {
@@ -149,7 +156,7 @@ export function ConflictResolution() {
                             <CloudOff className="h-3 w-3" /> 
                             <span>Local version (this device)</span>
                           </div>
-                          <Alert variant="outline" className="h-32 overflow-auto">
+                          <Alert className="h-32 overflow-auto">
                             <AlertDescription className="text-xs">
                               {localContent}
                             </AlertDescription>
@@ -161,7 +168,7 @@ export function ConflictResolution() {
                             <Database className="h-3 w-3" /> 
                             <span>Remote version (from server/peers)</span>
                           </div>
-                          <Alert variant="outline" className="h-32 overflow-auto">
+                          <Alert className="h-32 overflow-auto">
                             <AlertDescription className="text-xs">
                               {remoteContent}
                             </AlertDescription>

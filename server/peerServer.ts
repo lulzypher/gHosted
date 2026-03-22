@@ -16,7 +16,6 @@ export function setupPeerServer(app: Express, server: Server): void {
   // Create PeerJS server
   const peerServer = ExpressPeerServer(server, {
     path: '/peerjs',
-    debug: true,
     allow_discovery: true
   });
 

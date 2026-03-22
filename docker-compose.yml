@@ -1,0 +1,22 @@
+# Local development with Postgres
+# Usage: docker-compose up -d && npm run dev
+# Ensure DATABASE_URL=postgresql://ghosted:ghosted@localhost:5432/ghosted
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ghosted
+      POSTGRES_PASSWORD: ghosted
+      POSTGRES_DB: ghosted
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghosted"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -9,21 +9,6 @@ import {
   generateDID
 } from '@/lib/cryptography';
 
-// TypeScript type augmentation for localStorage
-declare global {
-  interface Window {
-    localStorage: {
-      getItem(key: string): string | null;
-      setItem(key: string, value: string): void;
-      removeItem(key: string): void;
-      clear(): void;
-      length: number;
-      key(index: number): string | null;
-      [key: string]: any;
-    };
-  }
-}
-
 interface CryptoIdentity {
   publicKey: string | null;
   did: string | null;

@@ -13,8 +13,10 @@ type AuthContextType = {
   isLoading: boolean;
   error: Error | null;
   loginMutation: UseMutationResult<User, Error, LoginData>;
+  keyLoginMutation: UseMutationResult<User, Error, KeyLoginData>;
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<User, Error, InsertUser>;
+  keyRegisterMutation: UseMutationResult<User, Error, KeyRegisterData>;
   qrLoginMutation: UseMutationResult<User, Error, QrLoginData>;
   checkQrSession: UseMutationResult<QrSessionStatus, Error, string>;
 };
@@ -24,6 +26,26 @@ type LoginData = {
   username: string;
   password: string;
   domain?: string;
+};
+
+// Key-based login (challenge-response, no password to server)
+type KeyLoginData = {
+  challengeId: string;
+  challenge: string;
+  publicKey: string;
+  signature: string;
+};
+
+// Key-only registration
+type KeyRegisterData = {
+  challengeId: string;
+  signature: string;
+  username: string;
+  displayName: string;
+  bio?: string;
+  did: string;
+  publicKey: string;
+  avatarCid?: string;
 };
 
 // QR code login data
@@ -80,6 +102,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const keyLoginMutation = useMutation({
+    mutationFn: async (data: KeyLoginData) => {
+      const res = await apiRequest("POST", "/api/auth/verify", {
+        challengeId: data.challengeId,
+        publicKey: data.publicKey,
+        signature: data.signature,
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Key login failed");
+      }
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Welcome back!",
+        description: `You're now logged in as ${user.displayName || user.username}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Key login failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: async (userData: InsertUser) => {
       const res = await apiRequest("POST", "/api/register", userData);
@@ -94,6 +145,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({
         title: "Account created",
         description: "Your account has been created successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Registration failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const keyRegisterMutation = useMutation({
+    mutationFn: async (data: KeyRegisterData) => {
+      const res = await apiRequest("POST", "/api/register/key", data);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Registration failed");
+      }
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Account created",
+        description: "Your decentralized identity has been registered.",
       });
     },
     onError: (error: Error) => {
@@ -177,12 +253,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: user ?? null,
         isLoading,
         error,
         loginMutation,
+        keyLoginMutation,
         logoutMutation,
         registerMutation,
+        keyRegisterMutation,
         qrLoginMutation,
         checkQrSession
       }}

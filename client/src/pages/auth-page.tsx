@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useCryptoIdentity } from "@/hooks/use-crypto-identity";
+import { useToast } from "@/hooks/use-toast";
 import { Redirect } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, QrCode, SmartphoneNfc, ServerCrash } from "lucide-react";
+import { Loader2, KeyRound } from "lucide-react";
 import * as QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import logoImage from "@assets/logoTransparent1.png";
@@ -29,27 +30,26 @@ const loginSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-// Registration schema - extend the insertUserSchema
-const registerSchema = insertUserSchema
-  .pick({
-    username: true,
-    password: true,
-    displayName: true,
-    bio: true,
-    did: true,
-    publicKey: true,
-  })
-  .extend({
-    password: z.string().min(6, "Password must be at least 6 characters"),
-    passwordConfirm: z.string().min(6, "Password confirmation is required"),
-  })
-  .refine((data) => data.password === data.passwordConfirm, {
-    message: "Passwords do not match",
-    path: ["passwordConfirm"],
-  });
+// Registration schema - key-only, passphrase encrypts key locally
+const registerSchema = z.object({
+  username: z.string().min(3).max(30),
+  displayName: z.string().min(2).max(50),
+  bio: z.string().max(200).optional(),
+  passphrase: z.string().min(6, "Passphrase protects your key locally (min 6 chars)"),
+  passphraseConfirm: z.string().min(6),
+}).refine((d) => d.passphrase === d.passphraseConfirm, {
+  message: "Passphrases do not match",
+  path: ["passphraseConfirm"],
+});
+
+// Key sign-in: passphrase to decrypt stored key
+const keyLoginSchema = z.object({
+  passphrase: z.string().min(1, "Passphrase required to unlock your key"),
+});
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
+type KeyLoginFormValues = z.infer<typeof keyLoginSchema>;
 
 // Handle clearInterval and setInterval typings (fixes Window type issues)
 declare global {
@@ -59,9 +59,17 @@ declare global {
   }
 }
 
+async function fetchChallenge(identifier?: string): Promise<{ challengeId: string; challenge: string }> {
+  const url = identifier ? `/api/auth/challenge?identifier=${encodeURIComponent(identifier)}` : "/api/auth/challenge";
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to get challenge");
+  return res.json();
+}
+
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation, qrLoginMutation } = useAuth();
-  const { generateNewKeys } = useCryptoIdentity();
+  const { user, loginMutation, keyLoginMutation, registerMutation, keyRegisterMutation } = useAuth();
+  const { generateNewKeys, signData, publicKey } = useCryptoIdentity();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("login");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -81,18 +89,22 @@ export default function AuthPage() {
     },
   });
 
-  // Register form
+  // Register form (key-only)
   const registerForm = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       username: "",
-      password: "",
-      passwordConfirm: "",
       displayName: "",
       bio: "",
-      did: "", // Will be auto-generated on submit
-      publicKey: "", // Will be auto-generated on submit
+      passphrase: "",
+      passphraseConfirm: "",
     },
+  });
+
+  // Key sign-in form
+  const keyLoginForm = useForm<KeyLoginFormValues>({
+    resolver: zodResolver(keyLoginSchema),
+    defaultValues: { passphrase: "" },
   });
 
   // We'll handle redirect after all hooks have been called
@@ -186,36 +198,45 @@ export default function AuthPage() {
     }
   };
   
-  const handleRegister = async (data: RegisterFormValues) => {
+  const handleKeyRegister = async (data: RegisterFormValues) => {
     try {
-      // Generate proper cryptographic keys using our utility
-      const keyPair = await generateNewKeys(data.password);
-      
-      // Generate a proper DID from the public key
-      const did = `did:ghosted:${keyPair.publicKey.substring(0, 16)}`;
-      
-      // Remove passwordConfirm from data before sending to API
-      const { passwordConfirm, ...userData } = data;
-      
-      registerMutation.mutate({
-        ...userData,
-        did,
+      const keyPair = await generateNewKeys(data.passphrase);
+      const { challengeId, challenge } = await fetchChallenge();
+      const signature = await signData(challenge, data.passphrase);
+      keyRegisterMutation.mutate({
+        challengeId,
+        signature,
+        username: data.username,
+        displayName: data.displayName,
+        bio: data.bio,
+        did: keyPair.did,
         publicKey: keyPair.publicKey,
       });
-    } catch (error) {
-      console.error("Error generating cryptographic keys:", error);
-      
-      // Fallback to simpler key generation if the advanced crypto fails
-      const did = `did:ghosted:${Math.random().toString(36).substring(2, 15)}`;
-      const publicKey = `${Math.random().toString(36).substring(2, 15)}.${Math.random().toString(36).substring(2, 15)}`;
-      
-      // Remove passwordConfirm from data before sending to API
-      const { passwordConfirm, ...userData } = data;
-      
-      registerMutation.mutate({
-        ...userData,
-        did,
+    } catch (err) {
+      toast({
+        title: "Registration failed",
+        description: err instanceof Error ? err.message : "Something went wrong",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleKeyLogin = async (data: KeyLoginFormValues) => {
+    if (!publicKey) return;
+    try {
+      const { challengeId, challenge } = await fetchChallenge();
+      const signature = await signData(challenge, data.passphrase);
+      keyLoginMutation.mutate({
+        challengeId,
+        challenge,
         publicKey,
+        signature,
+      });
+    } catch (err) {
+      toast({
+        title: "Key login failed",
+        description: err instanceof Error ? err.message : "Something went wrong",
+        variant: "destructive",
       });
     }
   };
@@ -329,6 +350,47 @@ export default function AuthPage() {
                       <span className="bg-card px-2 text-muted-foreground">Login Options</span>
                     </div>
                   </div>
+
+                  {/* Key-based sign-in (when keys are stored) */}
+                  {publicKey && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                        <KeyRound className="h-4 w-4" />
+                        Sign in with your key
+                      </h3>
+                      <Form {...keyLoginForm}>
+                        <form onSubmit={keyLoginForm.handleSubmit(handleKeyLogin)} className="space-y-4">
+                          <FormField
+                            control={keyLoginForm.control}
+                            name="passphrase"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Passphrase</FormLabel>
+                                <FormControl>
+                                  <Input type="password" placeholder="Unlock your stored key" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button
+                            type="submit"
+                            className="w-full"
+                            disabled={keyLoginMutation.isPending}
+                          >
+                            {keyLoginMutation.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Signing in...
+                              </>
+                            ) : (
+                              "Sign in with Key"
+                            )}
+                          </Button>
+                        </form>
+                      </Form>
+                    </div>
+                  )}
 
                   {/* Temporary Development Login */}
                   <div className="mb-6">
@@ -482,7 +544,7 @@ export default function AuthPage() {
                   </div>
                   
                   <Form {...registerForm}>
-                    <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
+                    <form onSubmit={registerForm.handleSubmit(handleKeyRegister)} className="space-y-4">
                       <FormField
                         control={registerForm.control}
                         name="username"
@@ -516,7 +578,7 @@ export default function AuthPage() {
                           <FormItem>
                             <FormLabel>Bio</FormLabel>
                             <FormControl>
-                              <Input placeholder="A short description about yourself" {...field} />
+                              <Input placeholder="A short description about yourself" {...field} value={field.value ?? ''} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -524,12 +586,12 @@ export default function AuthPage() {
                       />
                       <FormField
                         control={registerForm.control}
-                        name="password"
+                        name="passphrase"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Password</FormLabel>
+                            <FormLabel>Passphrase</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Create a strong password" {...field} />
+                              <Input type="password" placeholder="Encrypts your key locally (min 6 chars)" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -537,12 +599,12 @@ export default function AuthPage() {
                       />
                       <FormField
                         control={registerForm.control}
-                        name="passwordConfirm"
+                        name="passphraseConfirm"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Confirm Password</FormLabel>
+                            <FormLabel>Confirm Passphrase</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Confirm your password" {...field} />
+                              <Input type="password" placeholder="Confirm your passphrase" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -551,9 +613,9 @@ export default function AuthPage() {
                       <Button
                         type="submit"
                         className="w-full"
-                        disabled={registerMutation.isPending}
+                        disabled={keyRegisterMutation.isPending}
                       >
-                        {registerMutation.isPending ? (
+                        {keyRegisterMutation.isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Linking Device...

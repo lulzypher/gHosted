@@ -10,6 +10,15 @@ import {
   privateMessages, type PrivateMessage, type InsertPrivateMessage,
   conversations, type Conversation, type InsertConversation,
   conversationParticipants, type ConversationParticipant, type InsertConversationParticipant,
+  followers, type Follower, type InsertFollower,
+  userChainHeads, type UserChainHead, type InsertUserChainHead,
+  chainEntries, type ChainEntry, type InsertChainEntry,
+  groups, type Group, type InsertGroup,
+  groupMembers, type GroupMember, type InsertGroupMember,
+  groupProposals, type GroupProposal, type InsertGroupProposal,
+  groupVotes, type GroupVote, type InsertGroupVote,
+  groupChainHeads, type GroupChainHead,
+  groupChainEntries, type GroupChainEntry,
   reactionTypeEnum, messageStatusEnum
 } from "@shared/schema";
 
@@ -89,6 +98,7 @@ export interface IStorage {
   getReactionsByPost(postId: number): Promise<Reaction[]>;
   getReactionsByUser(userId: number): Promise<Reaction[]>;
   deleteReaction(id: number): Promise<Reaction>;
+  getUserPinHealth(userId: number): Promise<{ totalPins: number; remotePins: number; localPins: number }>;
   
   // Private Message operations
   createPrivateMessage(message: InsertPrivateMessage): Promise<PrivateMessage>;
@@ -112,6 +122,48 @@ export interface IStorage {
   getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]>;
   updateParticipantLastRead(userId: number, conversationId: string): Promise<ConversationParticipant>;
   removeParticipantFromConversation(userId: number, conversationId: string): Promise<ConversationParticipant>;
+
+  // Follow operations
+  followUser(follow: InsertFollower): Promise<Follower>;
+  unfollowUser(followerId: number, followeeId: number): Promise<boolean>;
+
+  // Per-user chain operations
+  getUserChainHead(userId: number): Promise<UserChainHead | undefined>;
+  upsertUserChainHead(data: InsertUserChainHead): Promise<UserChainHead>;
+  appendChainEntry(entry: InsertChainEntry): Promise<ChainEntry>;
+  getChainEntriesByUser(userId: number, limit?: number): Promise<ChainEntry[]>;
+
+  // Group operations
+  createGroup(group: InsertGroup): Promise<Group>;
+  getGroup(id: number): Promise<Group | undefined>;
+  getGroupByCreatorAndName(creatorId: number, name: string): Promise<Group | undefined>;
+  getGroupsByCreator(creatorId: number): Promise<Group[]>;
+  addGroupMember(member: InsertGroupMember): Promise<GroupMember>;
+  removeGroupMember(groupId: number, userId: number): Promise<boolean>;
+  getGroupMembers(groupId: number): Promise<(GroupMember & { user: User })[]>;
+  resolveUserInGroup(groupId: number, inGroupHandle: string): Promise<User | undefined>;
+  getGroupsForUser(userId: number): Promise<Group[]>;
+
+  // DAO proposals and votes
+  createProposal(proposal: InsertGroupProposal): Promise<GroupProposal>;
+  getProposal(id: number): Promise<GroupProposal | undefined>;
+  getProposalsByGroup(groupId: number, status?: string): Promise<GroupProposal[]>;
+  updateProposalStatus(id: number, status: string, executedAt?: Date): Promise<GroupProposal>;
+  createVote(vote: InsertGroupVote): Promise<GroupVote>;
+  getVotesByProposal(proposalId: number): Promise<GroupVote[]>;
+  getVote(proposalId: number, userId: number): Promise<GroupVote | undefined>;
+  getGroupChainHead(groupId: number): Promise<GroupChainHead | undefined>;
+  appendGroupChainEntry(entry: {
+    groupId: number;
+    entryCid: string;
+    prevCid: string | null;
+    action: string;
+    payloadCid: string;
+    signature: string;
+    authorDid: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<GroupChainEntry>;
+  getGroupChainEntries(groupId: number, limit?: number): Promise<GroupChainEntry[]>;
   
   // Session store
   sessionStore: session.Store;
@@ -591,6 +643,18 @@ export class DatabaseStorage implements IStorage {
     return deletedReaction;
   }
 
+  async getUserPinHealth(userId: number): Promise<{ totalPins: number; remotePins: number; localPins: number }> {
+    const userReactions = await this.getReactionsByUser(userId);
+    const pinReactions = userReactions.filter((reaction) => reaction.pinToPC || reaction.pinToMobile);
+    const remotePins = pinReactions.filter((reaction) => reaction.pinToMobile).length;
+    const localPins = pinReactions.filter((reaction) => reaction.pinToPC && !reaction.pinToMobile).length;
+    return {
+      totalPins: pinReactions.length,
+      remotePins,
+      localPins
+    };
+  }
+
   // Private Message operations
   async createPrivateMessage(message: InsertPrivateMessage): Promise<PrivateMessage> {
     const [newMessage] = await db.insert(privateMessages).values(message).returning();
@@ -888,6 +952,182 @@ export class DatabaseStorage implements IStorage {
     }
     
     return updatedParticipant;
+  }
+
+  async followUser(follow: InsertFollower): Promise<Follower> {
+    const [newFollow] = await db.insert(followers).values(follow).returning();
+    return newFollow;
+  }
+
+  async unfollowUser(followerId: number, followeeId: number): Promise<boolean> {
+    const removed = await db.delete(followers).where(
+      and(eq(followers.followerId, followerId), eq(followers.followeeId, followeeId))
+    ).returning();
+    return removed.length > 0;
+  }
+
+  async getUserChainHead(userId: number): Promise<UserChainHead | undefined> {
+    const [head] = await db.select().from(userChainHeads).where(eq(userChainHeads.userId, userId));
+    return head || undefined;
+  }
+
+  async upsertUserChainHead(data: InsertUserChainHead): Promise<UserChainHead> {
+    const existing = await this.getUserChainHead(data.userId);
+    if (existing) {
+      const [updated] = await db.update(userChainHeads)
+        .set({ headCid: data.headCid, updatedAt: new Date() })
+        .where(eq(userChainHeads.userId, data.userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(userChainHeads).values(data).returning();
+    return created;
+  }
+
+  async appendChainEntry(entry: InsertChainEntry): Promise<ChainEntry> {
+    const [created] = await db.insert(chainEntries).values(entry).returning();
+    await this.upsertUserChainHead({ userId: entry.userId, headCid: entry.entryCid });
+    return created;
+  }
+
+  async getChainEntriesByUser(userId: number, limit: number = 100): Promise<ChainEntry[]> {
+    return db.select().from(chainEntries).where(eq(chainEntries.userId, userId)).orderBy(desc(chainEntries.createdAt)).limit(limit);
+  }
+
+  async createGroup(group: InsertGroup): Promise<Group> {
+    const [created] = await db.insert(groups).values(group).returning();
+    return created;
+  }
+
+  async getGroup(id: number): Promise<Group | undefined> {
+    const [g] = await db.select().from(groups).where(eq(groups.id, id));
+    return g || undefined;
+  }
+
+  async getGroupByCreatorAndName(creatorId: number, name: string): Promise<Group | undefined> {
+    const [g] = await db.select().from(groups).where(
+      and(eq(groups.creatorId, creatorId), eq(groups.name, name))
+    );
+    return g || undefined;
+  }
+
+  async getGroupsByCreator(creatorId: number): Promise<Group[]> {
+    return db.select().from(groups).where(eq(groups.creatorId, creatorId)).orderBy(desc(groups.createdAt));
+  }
+
+  async addGroupMember(member: InsertGroupMember): Promise<GroupMember> {
+    const [created] = await db.insert(groupMembers).values(member).returning();
+    return created;
+  }
+
+  async removeGroupMember(groupId: number, userId: number): Promise<boolean> {
+    const removed = await db
+      .delete(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+      .returning();
+    return removed.length > 0;
+  }
+
+  async getGroupMembers(groupId: number): Promise<(GroupMember & { user: User })[]> {
+    const rows = await db.select({
+      member: groupMembers,
+      user: users,
+    })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(eq(groupMembers.groupId, groupId));
+    return rows.map(({ member, user }) => ({ ...member, user }));
+  }
+
+  async resolveUserInGroup(groupId: number, inGroupHandle: string): Promise<User | undefined> {
+    const rows = await db.select({ user: users })
+      .from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.inGroupHandle, inGroupHandle)
+      ));
+    return rows[0]?.user || undefined;
+  }
+
+  async getGroupsForUser(userId: number): Promise<Group[]> {
+    return db.select({ group: groups })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(eq(groupMembers.userId, userId))
+      .then((rows) => rows.map((r) => r.group));
+  }
+
+  async createProposal(proposal: InsertGroupProposal): Promise<GroupProposal> {
+    const [created] = await db.insert(groupProposals).values(proposal).returning();
+    return created;
+  }
+
+  async getProposal(id: number): Promise<GroupProposal | undefined> {
+    const [p] = await db.select().from(groupProposals).where(eq(groupProposals.id, id));
+    return p || undefined;
+  }
+
+  async getProposalsByGroup(groupId: number, status?: string): Promise<GroupProposal[]> {
+    const conditions = status
+      ? and(eq(groupProposals.groupId, groupId), eq(groupProposals.status, status as "pending" | "passed" | "rejected" | "executed"))
+      : eq(groupProposals.groupId, groupId);
+    return db.select().from(groupProposals).where(conditions).orderBy(desc(groupProposals.createdAt));
+  }
+
+  async updateProposalStatus(id: number, status: string, executedAt?: Date): Promise<GroupProposal> {
+    const [updated] = await db.update(groupProposals)
+      .set({ status: status as "pending" | "passed" | "rejected" | "executed", ...(executedAt && { executedAt }) })
+      .where(eq(groupProposals.id, id))
+      .returning();
+    if (!updated) throw new Error("Proposal not found");
+    return updated;
+  }
+
+  async createVote(vote: InsertGroupVote): Promise<GroupVote> {
+    const [created] = await db.insert(groupVotes).values(vote).returning();
+    return created;
+  }
+
+  async getVotesByProposal(proposalId: number): Promise<GroupVote[]> {
+    return db.select().from(groupVotes).where(eq(groupVotes.proposalId, proposalId));
+  }
+
+  async getVote(proposalId: number, userId: number): Promise<GroupVote | undefined> {
+    const [v] = await db.select().from(groupVotes).where(
+      and(eq(groupVotes.proposalId, proposalId), eq(groupVotes.userId, userId))
+    );
+    return v || undefined;
+  }
+
+  async getGroupChainHead(groupId: number): Promise<GroupChainHead | undefined> {
+    const [head] = await db.select().from(groupChainHeads).where(eq(groupChainHeads.groupId, groupId));
+    return head || undefined;
+  }
+
+  async appendGroupChainEntry(entry: {
+    groupId: number;
+    entryCid: string;
+    prevCid: string | null;
+    action: string;
+    payloadCid: string;
+    signature: string;
+    authorDid: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<GroupChainEntry> {
+    const [created] = await db.insert(groupChainEntries).values(entry).returning();
+    if (!created) throw new Error("Failed to append group chain entry");
+    const [head] = await db.select().from(groupChainHeads).where(eq(groupChainHeads.groupId, entry.groupId));
+    if (head) {
+      await db.update(groupChainHeads).set({ headCid: entry.entryCid, updatedAt: new Date() }).where(eq(groupChainHeads.groupId, entry.groupId));
+    } else {
+      await db.insert(groupChainHeads).values({ groupId: entry.groupId, headCid: entry.entryCid });
+    }
+    return created;
+  }
+
+  async getGroupChainEntries(groupId: number, limit: number = 50): Promise<GroupChainEntry[]> {
+    return db.select().from(groupChainEntries).where(eq(groupChainEntries.groupId, groupId)).orderBy(desc(groupChainEntries.createdAt)).limit(limit);
   }
 }
 

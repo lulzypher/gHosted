@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/contexts/UserContext';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 import { User, Search, Users as UsersIcon, Loader } from 'lucide-react';
 
 const UsersDirectory: React.FC = () => {
@@ -87,7 +88,7 @@ const UsersDirectory: React.FC = () => {
                     <div className="h-12 w-12 rounded-full overflow-hidden mr-3">
                       {user.avatarCid ? (
                         <img
-                          src={`https://ipfs.io/ipfs/${user.avatarCid}`}
+                          src={ipfsUrl(user.avatarCid)}
                           alt={user.displayName}
                           className="h-full w-full object-cover"
                         />

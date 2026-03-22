@@ -17,6 +17,7 @@ import {
   Users,
   Loader
 } from 'lucide-react';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 
 const UserProfile: React.FC = () => {
   const { user: currentUser } = useUser();
@@ -138,7 +139,7 @@ const UserProfile: React.FC = () => {
                   <>
                     {profile?.avatarCid ? (
                       <img 
-                        src={`https://ipfs.io/ipfs/${profile.avatarCid}`}
+                        src={ipfsUrl(profile.avatarCid)}
                         alt={`${profile.displayName}'s profile`}
                         className="h-full w-full object-cover"
                       />

@@ -1,256 +1,268 @@
-// Import our browser-compatible mock OrbitDB instead of the Node.js version
-import MockOrbitDB from './mockOrbitDB';
-import { getIPFS } from './ipfs';
-import { Post, User, PinnedContent } from '@/types';
+/**
+ * OrbitDB integration using Helia + @orbitdb/core for real P2P sync.
+ * Per-user post feeds, following, and aggregated feed.
+ */
 
-// Use mock OrbitDB in browser environments
-const OrbitDB = MockOrbitDB;
+import {
+  initDecentralizedStore,
+  openEventsDB,
+  openDocumentsDB,
+  openKeyValueDB,
+} from "./decentralizedStore";
+import { Post, User, PinnedContent } from "@/types";
 
-let orbitdb: any; // Using 'any' to avoid type issues
-let postsDB: any;
-let usersDB: any;
-let profilesDB: any;
-let pinnedContentsDB: any;
+// Decentralized post shape (no server ids)
+export interface DecentralizedPost {
+  contentCid: string;
+  authorDid: string;
+  content: string;
+  mediaCid?: string;
+  createdAt: string;
+  groupRef?: string; // Optional: when post is shared to a group
+}
 
-// Initialize OrbitDB
-export const initOrbitDB = async (did: string): Promise<any> => {
-  try {
-    const ipfs = await getIPFS();
-    // Use IndexedDB by default in browsers with a browser-compatible directory
-    const directory = `ghosted-${did.replace(/[^a-zA-Z0-9]/g, '')}`;
-    console.log('Initializing OrbitDB with directory:', directory);
-    
-    orbitdb = await OrbitDB.createInstance(ipfs, {
-      directory: directory
-    });
-    
-    return orbitdb;
-  } catch (error) {
-    console.error('Error initializing OrbitDB:', error);
-    throw error;
-  }
-};
+// Store API types from @orbitdb/core
+interface EventsStore {
+  add: (value: unknown) => Promise<string>;
+  iterator: (opts?: { amount?: number }) => AsyncGenerator<{ hash: string; value: unknown }>;
+}
+interface KeyValueStore {
+  put: (key: string, value: unknown) => Promise<string>;
+  get: (key: string) => Promise<unknown>;
+  del?: (key: string) => Promise<void>;
+  iterator?: (opts?: { amount?: number }) => AsyncGenerator<{ key: string; value: unknown }>;
+}
+interface DocumentsStore {
+  put: (doc: { _id: string; [k: string]: unknown }) => Promise<string>;
+  get: (key: string) => Promise<{ value: unknown } | undefined>;
+  del: (key: string) => Promise<string>;
+  iterator: (opts?: { amount?: number }) => AsyncGenerator<{ hash: string; key: string; value: unknown }>;
+}
 
-// Get OrbitDB instance, initializing if needed
-export const getOrbitDB = async (did: string): Promise<any> => {
-  if (!orbitdb) {
-    return initOrbitDB(did);
-  }
+// Cache for per-author posts DBs (limit size to avoid memory bloat)
+const authorPostsCache = new Map<string, EventsStore>();
+const MAX_CACHED_AUTHOR_DBS = 30;
+
+let usersDB: KeyValueStore | null = null;
+let profilesDB: DocumentsStore | null = null;
+let pinnedContentsDB: DocumentsStore | null = null;
+let followingDB: KeyValueStore | null = null;
+
+const USERS_DB = "ghosted.users";
+const PROFILES_DB = "ghosted.profiles";
+const PINNED_DB = "ghosted.pinned-contents";
+const FOLLOWING_DB = "ghosted.following";
+
+// Initialize OrbitDB (Helia + OrbitDB)
+export const initOrbitDB = async (did: string): Promise<unknown> => {
+  const { orbitdb } = await initDecentralizedStore();
   return orbitdb;
 };
 
-// Open or create the posts database
-export const openPostsDB = async (did: string): Promise<any> => {
-  if (postsDB) return postsDB;
-  
-  try {
-    const orbit = await getOrbitDB(did);
-    
-    // Use eventlog for posts as they're append-only
-    postsDB = await orbit.eventlog('ghosted.posts', {
-      accessController: {
-        write: ['*'] // Anyone can write for now
-      }
-    });
-    
-    await postsDB.load();
-    return postsDB;
-  } catch (error) {
-    console.error('Error opening posts database:', error);
-    throw error;
+// Open per-author posts DB
+export const openAuthorPostsDB = async (authorDid: string): Promise<EventsStore> => {
+  const key = `ghosted.posts.${authorDid.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+  const cached = authorPostsCache.get(key);
+  if (cached) return cached;
+
+  await initOrbitDB(authorDid);
+  const db = (await openEventsDB(key)) as EventsStore;
+  if (authorPostsCache.size >= MAX_CACHED_AUTHOR_DBS) {
+    const first = authorPostsCache.keys().next().value;
+    if (first) authorPostsCache.delete(first);
   }
+  authorPostsCache.set(key, db);
+  return db;
 };
 
-// Open or create the users database
-export const openUsersDB = async (did: string): Promise<any> => {
+// Open following DB (keyvalue: did -> { did, addedAt })
+export const openFollowingDB = async (myDid: string): Promise<KeyValueStore> => {
+  if (followingDB) return followingDB;
+  await initOrbitDB(myDid);
+  followingDB = (await openKeyValueDB(FOLLOWING_DB)) as KeyValueStore;
+  return followingDB;
+};
+
+// Open or create the users database (key-value)
+export const openUsersDB = async (did: string): Promise<KeyValueStore> => {
   if (usersDB) return usersDB;
-  
-  try {
-    const orbit = await getOrbitDB(did);
-    
-    // Use keyvalue for users database
-    usersDB = await orbit.keyvalue('ghosted.users', {
-      accessController: {
-        write: ['*'] // Anyone can write for now
-      }
-    });
-    
-    await usersDB.load();
-    return usersDB;
-  } catch (error) {
-    console.error('Error opening users database:', error);
-    throw error;
-  }
+  await initOrbitDB(did);
+  usersDB = (await openKeyValueDB(USERS_DB)) as KeyValueStore;
+  return usersDB;
 };
 
-// Open or create the profiles database
-export const openProfilesDB = async (did: string): Promise<any> => {
+// Open or create the profiles database (documents)
+export const openProfilesDB = async (did: string): Promise<DocumentsStore> => {
   if (profilesDB) return profilesDB;
-  
-  try {
-    const orbit = await getOrbitDB(did);
-    
-    // Use documents database for profiles
-    profilesDB = await orbit.docs('ghosted.profiles', {
-      accessController: {
-        write: [did] // Only the owner can write to their profile
-      }
-    });
-    
-    await profilesDB.load();
-    return profilesDB;
-  } catch (error) {
-    console.error('Error opening profiles database:', error);
-    throw error;
-  }
+  await initOrbitDB(did);
+  profilesDB = (await openDocumentsDB(PROFILES_DB)) as DocumentsStore;
+  return profilesDB;
 };
 
-// Open or create the pinned contents database
-export const openPinnedContentsDB = async (did: string): Promise<any> => {
+// Open or create the pinned contents database (documents)
+export const openPinnedContentsDB = async (did: string): Promise<DocumentsStore> => {
   if (pinnedContentsDB) return pinnedContentsDB;
-  
+  await initOrbitDB(did);
+  pinnedContentsDB = (await openDocumentsDB(PINNED_DB)) as DocumentsStore;
+  return pinnedContentsDB;
+};
+
+// --- Posts (per-author) ---
+
+export const addPost = async (
+  authorDid: string,
+  post: DecentralizedPost
+): Promise<string> => {
+  const db = await openAuthorPostsDB(authorDid);
+  return db.add(post);
+};
+
+export const getPostsByAuthor = async (
+  authorDid: string
+): Promise<DecentralizedPost[]> => {
+  const db = await openAuthorPostsDB(authorDid);
+  const posts: DecentralizedPost[] = [];
+  for await (const { value } of db.iterator({ amount: -1 })) {
+    posts.push(value as DecentralizedPost);
+  }
+  return posts.reverse();
+};
+
+// --- Following ---
+
+export const followUser = async (
+  myDid: string,
+  targetDid: string
+): Promise<void> => {
+  const db = await openFollowingDB(myDid);
+  await db.put(targetDid, { did: targetDid, addedAt: new Date().toISOString() });
+};
+
+export const unfollowUser = async (
+  myDid: string,
+  targetDid: string
+): Promise<void> => {
+  const db = (await openFollowingDB(myDid)) as KeyValueStore & { del: (key: string) => Promise<void> };
+  if (typeof db.del === "function") {
+    await db.del(targetDid);
+  }
+};
+
+// But our interface doesn't have del. Let me add it to the interface.
+// Actually looking at the KeyValue - it has del. So we need to extend the interface.
+export const getFollowing = async (myDid: string): Promise<string[]> => {
+  const db = await openFollowingDB(myDid);
+  const dids: string[] = [];
   try {
-    const orbit = await getOrbitDB(did);
-    
-    // Use documents database for pinned contents
-    pinnedContentsDB = await orbit.docs('ghosted.pinned-contents', {
-      accessController: {
-        write: [did] // Only the owner can write
+    const kv = db as KeyValueStore & { iterator?: (opts?: { amount?: number }) => AsyncGenerator<{ key: string; value: unknown }> };
+    if (kv.iterator) {
+      for await (const { key, value } of kv.iterator({ amount: -1 })) {
+        if (value && typeof value === "object" && "did" in value) {
+          dids.push((value as { did: string }).did);
+        } else if (key && value != null) {
+          dids.push(key);
+        }
       }
-    });
-    
-    await pinnedContentsDB.load();
-    return pinnedContentsDB;
-  } catch (error) {
-    console.error('Error opening pinned contents database:', error);
-    throw error;
-  }
-};
-
-// Add a post to OrbitDB
-export const addPost = async (did: string, post: Post): Promise<string> => {
-  try {
-    const db = await openPostsDB(did);
-    const hash = await db.add(post);
-    return hash;
-  } catch (error) {
-    console.error('Error adding post to OrbitDB:', error);
-    throw error;
-  }
-};
-
-// Get all posts from OrbitDB
-export const getAllPosts = async (did: string): Promise<Post[]> => {
-  try {
-    const db = await openPostsDB(did);
-    const posts = db.iterator({ limit: -1 })
-      .collect()
-      .map((entry: any) => entry.payload.value);
-    
-    return posts;
-  } catch (error) {
-    console.error('Error getting posts from OrbitDB:', error);
-    return [];
-  }
-};
-
-// Add a user to OrbitDB
-export const addUser = async (did: string, user: User): Promise<void> => {
-  try {
-    const db = await openUsersDB(did);
-    await db.put(user.id.toString(), user);
-  } catch (error) {
-    console.error('Error adding user to OrbitDB:', error);
-    throw error;
-  }
-};
-
-// Get a user from OrbitDB
-export const getUser = async (did: string, userId: string): Promise<User | null> => {
-  try {
-    const db = await openUsersDB(did);
-    const user = await db.get(userId);
-    return user;
-  } catch (error) {
-    console.error('Error getting user from OrbitDB:', error);
-    return null;
-  }
-};
-
-// Add or update profile in OrbitDB
-export const updateProfile = async (did: string, profile: any): Promise<string> => {
-  try {
-    const db = await openProfilesDB(did);
-    
-    // Use DID as the document _id
-    const profileDoc = { _id: did, ...profile };
-    const hash = await db.put(profileDoc);
-    
-    return hash;
-  } catch (error) {
-    console.error('Error updating profile in OrbitDB:', error);
-    throw error;
-  }
-};
-
-// Get profile from OrbitDB
-export const getProfile = async (did: string, profileDid: string): Promise<any | null> => {
-  try {
-    const db = await openProfilesDB(did);
-    const profile = await db.get(profileDid);
-    
-    if (profile && profile.length > 0) {
-      return profile[0];
     }
-    
-    return null;
-  } catch (error) {
-    console.error('Error getting profile from OrbitDB:', error);
-    return null;
+  } catch {
+    // No iterator - return empty for now
   }
+  return dids;
 };
 
-// Add pinned content to OrbitDB
-export const addPinnedContent = async (did: string, pinnedContent: PinnedContent): Promise<string> => {
-  try {
-    const db = await openPinnedContentsDB(did);
-    
-    // Use contentCid as document _id for uniqueness
-    const pinnedDoc = { _id: pinnedContent.contentCid, ...pinnedContent };
-    const hash = await db.put(pinnedDoc);
-    
-    return hash;
-  } catch (error) {
-    console.error('Error adding pinned content to OrbitDB:', error);
-    throw error;
+// --- Aggregated feed ---
+
+export const getFeedPosts = async (
+  myDid: string,
+  followedDids: string[]
+): Promise<DecentralizedPost[]> => {
+  const allDids = [myDid, ...followedDids.filter((d) => d !== myDid)];
+  const allPosts: DecentralizedPost[] = [];
+  for (const did of allDids) {
+    try {
+      const posts = await getPostsByAuthor(did);
+      allPosts.push(...posts);
+    } catch (e) {
+      console.warn(`Failed to load posts for ${did}:`, e);
+    }
   }
+  allPosts.sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  return allPosts;
 };
 
-// Remove pinned content from OrbitDB
-export const removePinnedContent = async (did: string, contentCid: string): Promise<string> => {
-  try {
-    const db = await openPinnedContentsDB(did);
-    const hash = await db.del(contentCid);
-    
-    return hash;
-  } catch (error) {
-    console.error('Error removing pinned content from OrbitDB:', error);
-    throw error;
-  }
+// --- Legacy / compatibility ---
+
+export const openPostsDB = async (did: string): Promise<EventsStore> =>
+  openAuthorPostsDB(did);
+
+export const getAllPosts = async (did: string): Promise<DecentralizedPost[]> =>
+  getPostsByAuthor(did);
+
+// --- Users, profiles, pinned (unchanged) ---
+
+export const addUser = async (did: string, user: User): Promise<void> => {
+  const db = await openUsersDB(did);
+  await db.put(user.id.toString(), user);
 };
 
-// Get all pinned content from OrbitDB
-export const getAllPinnedContent = async (did: string): Promise<PinnedContent[]> => {
-  try {
-    const db = await openPinnedContentsDB(did);
-    const pinnedContents = await db.get('');
-    
-    return pinnedContents.map((doc: any) => {
-      const { _id, ...content } = doc;
-      return content;
-    });
-  } catch (error) {
-    console.error('Error getting pinned contents from OrbitDB:', error);
-    return [];
+export const getUser = async (
+  did: string,
+  userId: string
+): Promise<User | null> => {
+  const db = await openUsersDB(did);
+  const v = await db.get(userId);
+  return (v as User | null) ?? null;
+};
+
+export const updateProfile = async (
+  did: string,
+  profile: Record<string, unknown>
+): Promise<string> => {
+  const db = await openProfilesDB(did);
+  const profileDoc = { _id: did, ...profile };
+  return db.put(profileDoc);
+};
+
+export const getProfile = async (
+  did: string,
+  profileDid: string
+): Promise<unknown | null> => {
+  const db = await openProfilesDB(did);
+  const entry = await db.get(profileDid);
+  return (entry && "value" in entry ? entry.value : entry) ?? null;
+};
+
+export const addPinnedContent = async (
+  did: string,
+  pinnedContent: PinnedContent
+): Promise<string> => {
+  const db = await openPinnedContentsDB(did);
+  const pinnedDoc = {
+    _id: pinnedContent.contentCid,
+    ...pinnedContent,
+  };
+  return db.put(pinnedDoc);
+};
+
+export const removePinnedContent = async (
+  did: string,
+  contentCid: string
+): Promise<string> => {
+  const db = await openPinnedContentsDB(did);
+  return db.del(contentCid);
+};
+
+export const getAllPinnedContent = async (
+  did: string
+): Promise<PinnedContent[]> => {
+  const db = await openPinnedContentsDB(did);
+  const results: PinnedContent[] = [];
+  for await (const { value } of db.iterator({ amount: -1 })) {
+    const { _id, ...content } = value as { _id: string } & PinnedContent;
+    results.push(content as PinnedContent);
   }
+  return results;
 };

@@ -3,24 +3,29 @@ import { Route, Switch, Link, useLocation } from 'wouter';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { Toaster } from '@/components/ui/toaster';
-import { useToast } from '@/hooks/use-toast'; 
-import { AuthProvider, useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
+import { LocalIdentityProvider } from '@/contexts/LocalIdentityContext';
+import { DecentralizedAuthBridge } from '@/contexts/DecentralizedAuthBridge';
+import { DecentralizedUserProvider } from '@/contexts/DecentralizedUserProvider';
 import { ProtectedRoute } from '@/lib/protected-route';
-import { useCryptoIdentity } from '@/hooks/use-crypto-identity';
 import { PeerDiscoveryProvider } from '@/contexts/PeerDiscoveryContext';
 import { SyncProvider } from '@/contexts/SyncContext';
 import { P2PProvider } from '@/contexts/P2PContext';
 import { WebSocketProvider } from '@/contexts/WebSocketContext';
 import { IPFSProvider } from '@/contexts/IPFSContext';
-import { UserProvider } from '@/contexts/UserContext';
+import { OrbitDBProvider } from '@/contexts/OrbitDBContext';
 import { ConflictResolution } from '@/components/ConflictResolution';
-import { DebugPanel } from '@/components/DebugPanel';
 import HomePageContent from '@/pages/home-page';
 import MessagingPage from '@/pages/messaging';
 import UserProfile from '@/pages/user-profile';
 import Profile from '@/pages/profile';
 import UsersDirectory from '@/pages/users-directory';
-import AuthPage from '@/pages/auth-page';
+import GroupsPage from '@/pages/groups';
+import Settings from '@/pages/settings';
+import SavedPage from '@/pages/saved';
+import SearchPage from '@/pages/search';
+import DiagnosticsPage from '@/pages/diagnostics';
+import DecentralizedAuthPage from '@/pages/decentralized-auth';
 import logoImage from "@assets/logoTransparent1.png";
 
 // Landing page for unauthenticated users
@@ -103,39 +108,41 @@ const NotFoundPage = () => (
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {/* User provider for user data and authentication state */}
-        <UserProvider>
-          {/* WebSocket provider for real-time messaging */}
-          <WebSocketProvider>
-            {/* IPFS provider for decentralized storage */}
-            <IPFSProvider>
-              {/* Rearranged context providers to avoid circular dependencies */}
-              <SyncProvider>
-                <P2PProvider>
-                  <PeerDiscoveryProvider>
-                    <Switch>
-                      <ProtectedRoute path="/" component={HomePage} />
-                      <ProtectedRoute path="/messages" component={MessagingPage} />
-                      <ProtectedRoute path="/profile" component={Profile} />
-                      <ProtectedRoute path="/users" component={UsersDirectory} />
-                      <ProtectedRoute path="/user/:id" component={UserProfile} />
-                      <Route path="/auth" component={AuthPage} />
-                      <Route path="/about" component={AboutPage} />
-                      <Route component={NotFoundPage} />
-                    </Switch>
-                    {/* Show conflict resolution dialog when needed */}
-                    <ConflictResolution />
-                    <Toaster />
-                    {/* Debug panel to diagnose session inconsistencies */}
-                    <DebugPanel />
-                  </PeerDiscoveryProvider>
-                </P2PProvider>
-              </SyncProvider>
-            </IPFSProvider>
-          </WebSocketProvider>
-        </UserProvider>
-      </AuthProvider>
+      <LocalIdentityProvider>
+        <DecentralizedAuthBridge>
+          <DecentralizedUserProvider>
+            <WebSocketProvider>
+              <IPFSProvider>
+                <OrbitDBProvider>
+                <SyncProvider>
+                  <P2PProvider>
+                    <PeerDiscoveryProvider>
+                      <Switch>
+                        <ProtectedRoute path="/" component={HomePage} />
+                        <ProtectedRoute path="/messages" component={MessagingPage} />
+                        <ProtectedRoute path="/profile" component={Profile} />
+                        <ProtectedRoute path="/users" component={UsersDirectory} />
+                        <ProtectedRoute path="/groups" component={GroupsPage} />
+                        <ProtectedRoute path="/user/:id" component={UserProfile} />
+                        <ProtectedRoute path="/settings" component={Settings} />
+                        <ProtectedRoute path="/saved" component={SavedPage} />
+                        <ProtectedRoute path="/search" component={SearchPage} />
+                        <ProtectedRoute path="/diagnostics" component={DiagnosticsPage} />
+                        <Route path="/auth" component={DecentralizedAuthPage} />
+                        <Route path="/about" component={AboutPage} />
+                        <Route component={NotFoundPage} />
+                      </Switch>
+                      <ConflictResolution />
+                      <Toaster />
+                    </PeerDiscoveryProvider>
+                  </P2PProvider>
+                </SyncProvider>
+                </OrbitDBProvider>
+              </IPFSProvider>
+            </WebSocketProvider>
+          </DecentralizedUserProvider>
+        </DecentralizedAuthBridge>
+      </LocalIdentityProvider>
     </QueryClientProvider>
   );
 }

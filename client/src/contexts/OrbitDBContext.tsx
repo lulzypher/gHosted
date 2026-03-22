@@ -1,46 +1,41 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import OrbitDB from 'orbit-db';
 import { initOrbitDB, openPostsDB, openUsersDB, openProfilesDB, openPinnedContentsDB } from '@/lib/orbitdb';
-import { useIPFS } from './IPFSContext';
 import { useUser } from './UserContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface OrbitDBContextProps {
-  orbitdb: OrbitDB | null;
+  orbitdb: unknown | null;
   isOrbitDBReady: boolean;
   orbitDBError: string | null;
-  postsDB: any;
-  usersDB: any;
-  profilesDB: any;
-  pinnedContentsDB: any;
+  postsDB: unknown | null;
+  usersDB: unknown | null;
+  profilesDB: unknown | null;
+  pinnedContentsDB: unknown | null;
 }
 
 const OrbitDBContext = createContext<OrbitDBContextProps | undefined>(undefined);
 
 export const OrbitDBProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [orbitdb, setOrbitdb] = useState<OrbitDB | null>(null);
+  const [orbitdb, setOrbitdb] = useState<unknown | null>(null);
   const [isOrbitDBReady, setIsOrbitDBReady] = useState<boolean>(false);
   const [orbitDBError, setOrbitDBError] = useState<string | null>(null);
-  const [postsDB, setPostsDB] = useState<any>(null);
-  const [usersDB, setUsersDB] = useState<any>(null);
-  const [profilesDB, setProfilesDB] = useState<any>(null);
-  const [pinnedContentsDB, setPinnedContentsDB] = useState<any>(null);
+  const [postsDB, setPostsDB] = useState<unknown | null>(null);
+  const [usersDB, setUsersDB] = useState<unknown | null>(null);
+  const [profilesDB, setProfilesDB] = useState<unknown | null>(null);
+  const [pinnedContentsDB, setPinnedContentsDB] = useState<unknown | null>(null);
   
-  const { ipfs, isIPFSReady } = useIPFS();
   const { user } = useUser();
   const { toast } = useToast();
 
-  // Initialize OrbitDB when IPFS is ready and user is logged in
+  // Initialize OrbitDB when user is logged in (uses Helia + @orbitdb/core, no IPFS gateway)
   useEffect(() => {
     const init = async () => {
-      if (!isIPFSReady || !user) return;
+      if (!user) return;
       
       try {
-        // Initialize OrbitDB with user's DID
         const orbitInstance = await initOrbitDB(user.did);
         setOrbitdb(orbitInstance);
         
-        // Open databases
         const posts = await openPostsDB(user.did);
         const users = await openUsersDB(user.did);
         const profiles = await openProfilesDB(user.did);
@@ -70,7 +65,7 @@ export const OrbitDBProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     init();
-  }, [isIPFSReady, user, toast]);
+  }, [user, toast]);
 
   return (
     <OrbitDBContext.Provider value={{

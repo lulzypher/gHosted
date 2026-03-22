@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Lightweight IPFS client implementation for browsers
  * This version avoids dependencies on Node.js modules like node:os

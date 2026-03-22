@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, FileText, Send } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { ipfsUrl } from '@/lib/ipfsGateway';
 
 export function CreatePost() {
   const { user } = useAuth();
@@ -19,7 +20,7 @@ export function CreatePost() {
         <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-[#3a3b3c]">
           {user?.avatarCid ? (
             <img
-              src={`https://ipfs.io/ipfs/${user.avatarCid}`}
+              src={ipfsUrl(user.avatarCid)}
               alt={user.displayName}
               className="h-full w-full object-cover"
             />

@@ -582,25 +582,22 @@ export function IPFSNodeConfig() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Radio 
-                      checked={nodeSettings.ipnsPublishInterval === 60}
                       onClick={() => updateSetting('ipnsPublishInterval', 60)}
-                      className="border-[#3499f0]"
+                      className={nodeSettings.ipnsPublishInterval === 60 ? "border-[#3499f0]" : "border-[#6b7280]"}
                     />
                     <Label className="text-[#e4e6eb]">Every hour (recommended)</Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Radio 
-                      checked={nodeSettings.ipnsPublishInterval === 360}
                       onClick={() => updateSetting('ipnsPublishInterval', 360)}
-                      className="border-[#3499f0]"
+                      className={nodeSettings.ipnsPublishInterval === 360 ? "border-[#3499f0]" : "border-[#6b7280]"}
                     />
                     <Label className="text-[#e4e6eb]">Every 6 hours</Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Radio 
-                      checked={nodeSettings.ipnsPublishInterval === 1440}
                       onClick={() => updateSetting('ipnsPublishInterval', 1440)}
-                      className="border-[#3499f0]"
+                      className={nodeSettings.ipnsPublishInterval === 1440 ? "border-[#3499f0]" : "border-[#6b7280]"}
                     />
                     <Label className="text-[#e4e6eb]">Daily</Label>
                   </div>

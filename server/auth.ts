@@ -3,19 +3,70 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { Express, NextFunction, Request, Response } from "express";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { scrypt, randomBytes, timingSafeEqual, createPublicKey, verify, constants } from "crypto";
 import { promisify } from "util";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { User, InsertUser } from "@shared/schema";
+import type { User as DbUser, InsertUser } from "@shared/schema";
 import { z } from "zod";
 
 declare global {
   namespace Express {
-    interface User extends User {}
+    interface User extends DbUser {}
   }
 }
 
 const scryptAsync = promisify(scrypt);
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const challengeStore = new Map<
+  string,
+  { challenge: string; createdAt: number; identifier?: string }
+>();
+
+function addChallenge(identifier?: string): { challengeId: string; challenge: string } {
+  const challengeId = randomUUID();
+  const challenge = randomBytes(32).toString("base64url");
+  challengeStore.set(challengeId, {
+    challenge,
+    createdAt: Date.now(),
+    identifier,
+  });
+  return { challengeId, challenge };
+}
+
+function consumeChallenge(challengeId: string): string | null {
+  const entry = challengeStore.get(challengeId);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > CHALLENGE_TTL_MS) {
+    challengeStore.delete(challengeId);
+    return null;
+  }
+  challengeStore.delete(challengeId);
+  return entry.challenge;
+}
+
+// RSA-PSS verification (client uses RSA-PSS with saltLength 32)
+function verifyRsaPss(message: string, signatureBase64: string, publicKeyBase64: string): boolean {
+  try {
+    const keyBuf = Buffer.from(publicKeyBase64, "base64");
+    const key = createPublicKey({ key: keyBuf, format: "der", type: "spki" });
+    const msgBuf = Buffer.from(message, "utf8");
+    const sigBuf = Buffer.from(signatureBase64, "base64");
+    return verify(
+      "RSA-SHA256",
+      msgBuf,
+      {
+        key,
+        padding: constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: 32,
+      },
+      sigBuf
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Password hashing functions
 async function hashPassword(password: string) {
@@ -37,10 +88,10 @@ const loginSchema = z.object({
   password: z.string().min(6),
 });
 
-// Register validation schema
+// Register validation schema (password optional for key-only registration)
 const registerSchema = z.object({
   username: z.string().min(3).max(30),
-  password: z.string().min(6),
+  password: z.string().min(6).optional(),
   displayName: z.string().min(2).max(50),
   bio: z.string().max(200).optional(),
   did: z.string(),
@@ -51,13 +102,27 @@ const registerSchema = z.object({
   settings: z.any().optional(),
 });
 
+// Key-only register (proves key ownership via challenge)
+const keyRegisterSchema = z.object({
+  challengeId: z.string().uuid(),
+  signature: z.string(),
+  username: z.string().min(3).max(30),
+  displayName: z.string().min(2).max(50),
+  bio: z.string().max(200).optional(),
+  did: z.string(),
+  publicKey: z.string(),
+  avatarCid: z.string().optional(),
+});
+
 export function setupAuth(app: Express) {
   // Create PostgreSQL session store
   const PostgresSessionStore = connectPg(session);
   
   // Configure session
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "not-very-secret",
+    secret: process.env.NODE_ENV === "production" 
+      ? (process.env.SESSION_SECRET || (() => { throw new Error("SESSION_SECRET required in production"); })())
+      : (process.env.SESSION_SECRET || "not-very-secret"),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -127,7 +192,87 @@ export function setupAuth(app: Express) {
     res.status(401).json({ message: "Not authenticated" });
   };
 
-  // Authentication routes
+  // Challenge-response auth (key-based)
+  app.get("/api/auth/challenge", (req: Request, res: Response) => {
+    const identifier = typeof req.query.identifier === "string" ? req.query.identifier : undefined;
+    const { challengeId, challenge } = addChallenge(identifier);
+    res.json({ challengeId, challenge });
+  });
+
+  app.post("/api/auth/verify", async (req: Request, res: Response, next: NextFunction) => {
+    const { challengeId, publicKey, signature } = req.body;
+    if (!challengeId || !publicKey || !signature) {
+      return res.status(400).json({ message: "Missing challengeId, publicKey, or signature" });
+    }
+    const challenge = consumeChallenge(challengeId);
+    if (!challenge) {
+      return res.status(400).json({ message: "Challenge expired or invalid" });
+    }
+    if (!verifyRsaPss(challenge, signature, publicKey)) {
+      return res.status(401).json({ message: "Invalid signature" });
+    }
+    const user = await storage.getUserByPublicKey(publicKey);
+    if (!user) {
+      return res.status(401).json({ message: "No account linked to this key" });
+    }
+    req.login(user, (err) => {
+      if (err) return next(err);
+      const userResponse = { ...user, password: undefined };
+      res.json(userResponse);
+    });
+  });
+
+  // Key-only registration (no password, proves key ownership)
+  app.post("/api/register/key", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const validationResult = keyRegisterSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: validationResult.error.errors,
+        });
+      }
+      const data = validationResult.data;
+      const challenge = consumeChallenge(data.challengeId);
+      if (!challenge) {
+        return res.status(400).json({ message: "Challenge expired or invalid" });
+      }
+      if (!verifyRsaPss(challenge, data.signature, data.publicKey)) {
+        return res.status(401).json({ message: "Invalid signature – key ownership not verified" });
+      }
+      const existingByUsername = await storage.getUserByUsername(data.username);
+      if (existingByUsername) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+      const existingByDid = await storage.getUserByDID(data.did);
+      if (existingByDid) {
+        return res.status(400).json({ message: "DID already registered" });
+      }
+      const existingByKey = await storage.getUserByPublicKey(data.publicKey);
+      if (existingByKey) {
+        return res.status(400).json({ message: "Public key already registered" });
+      }
+      const user = await storage.createUser({
+        username: data.username,
+        displayName: data.displayName,
+        bio: data.bio,
+        did: data.did,
+        publicKey: data.publicKey,
+        avatarCid: data.avatarCid,
+        password: null,
+      });
+      const userResponse = { ...user, password: undefined };
+      req.login(user, (err) => {
+        if (err) return next(err);
+        res.status(201).json(userResponse);
+      });
+    } catch (error) {
+      console.error("Key registration error:", error);
+      res.status(500).json({ message: "Error creating account" });
+    }
+  });
+
+  // Authentication routes (password optional for backward compatibility)
   app.post("/api/register", async (req: Request, res: Response, next: NextFunction) => {
     try {
       // Validate request data
@@ -149,13 +294,15 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "Username already exists" });
       }
       
-      // Hash password
+      // Hash password if provided (optional for key-only)
       if (userData.password) {
         userData.password = await hashPassword(userData.password);
+      } else {
+        (userData as Record<string, unknown>).password = null;
       }
       
       // Create user
-      const user = await storage.createUser(userData);
+      const user = await storage.createUser(userData as InsertUser);
       
       // Remove password from response
       const userResponse = { ...user, password: undefined };
@@ -183,7 +330,7 @@ export function setupAuth(app: Express) {
         });
       }
       
-      passport.authenticate("local", (err: Error, user: User, info: any) => {
+      passport.authenticate("local", (err: Error, user: DbUser, info: any) => {
         if (err) return next(err);
         
         if (!user) {
@@ -220,7 +367,7 @@ export function setupAuth(app: Express) {
     }
     
     // Remove password from response
-    const user = req.user as User;
+    const user = req.user as DbUser;
     const userResponse = { ...user, password: undefined };
     
     res.status(200).json(userResponse);

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 import { NetworkStatus } from '@/types';
-import Header from '@/components/Header';
-import LocalPeers from '@/components/LocalPeers';
+import { Header } from '@/components/Header';
+import { LocalPeers } from '@/components/LocalPeers';
 
 // This is a placeholder home page that shows our network status functionality
 const HomePage: React.FC = () => {

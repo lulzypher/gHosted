@@ -1,44 +1,97 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { useUser } from '@/contexts/UserContext';
 import { useIPFS } from '@/contexts/IPFSContext';
-import Header from '@/components/Header';
-import LeftSidebar from '@/components/LeftSidebar';
+import { Header } from '@/components/Header';
+import { LeftSidebar } from '@/components/LeftSidebar';
 import MobileNavigation from '@/components/MobileNavigation';
+import { LocalPeers } from '@/components/LocalPeers';
+import { DevicePairing } from '@/components/DevicePairing';
+import { SyncStatusCompact } from '@/components/SyncStatus';
+import { WebSocketStatus } from '@/components/WebSocketStatus';
+import { DebugPanel } from '@/components/DebugPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Shield, 
-  UserCog, 
-  HardDrive, 
-  Smartphone, 
-  Globe, 
-  Bell, 
-  Eye, 
-  Moon, 
-  Trash2, 
-  RefreshCw
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+  Shield,
+  UserCog,
+  HardDrive,
+  Smartphone,
+  Globe,
+  Bell,
+  Eye,
+  Trash2,
+  RefreshCw,
+  Wifi,
+  Bug,
+  ChevronRight,
 } from 'lucide-react';
 import Login from './login';
+
+const SETTINGS_KEY = 'ghosted-settings';
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        darkMode: Boolean(parsed.darkMode),
+        notifications: parsed.notifications !== false,
+        publicProfile: parsed.publicProfile !== false,
+        autoSync: parsed.autoSync !== false,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { darkMode: false, notifications: true, publicProfile: true, autoSync: true };
+}
+
+function saveSettings(settings: Record<string, boolean>) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+}
 
 const Settings: React.FC = () => {
   const { user, isLoading: isUserLoading, logout } = useUser();
   const { stats } = useIPFS();
 
+  const loaded = loadSettings();
   const [storageLimit, setStorageLimit] = useState<number>(1);
-  const [darkMode, setDarkMode] = useState<boolean>(false);
-  const [notifications, setNotifications] = useState<boolean>(true);
-  const [publicProfile, setPublicProfile] = useState<boolean>(true);
-  const [autoSync, setAutoSync] = useState<boolean>(true);
+  const [darkMode, setDarkMode] = useState<boolean>(loaded.darkMode);
+  const [notifications, setNotifications] = useState<boolean>(loaded.notifications);
+  const [publicProfile, setPublicProfile] = useState<boolean>(loaded.publicProfile);
+  const [autoSync, setAutoSync] = useState<boolean>(loaded.autoSync);
+  const [debugOpen, setDebugOpen] = useState<boolean>(false);
+
+  // Persist settings when they change
+  useEffect(() => {
+    saveSettings({ darkMode, notifications, publicProfile, autoSync });
+  }, [darkMode, notifications, publicProfile, autoSync]);
 
   // Set initial storage limit based on stats
   useEffect(() => {
     if (stats) {
-      setStorageLimit(stats.allocatedSize / (1024 * 1024 * 1024));
+      setStorageLimit((stats.allocatedSize ?? 0) / (1024 * 1024 * 1024));
     }
   }, [stats]);
+
+  // Apply dark mode to document
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
   // If user is not logged in, show login page
   if (!isUserLoading && !user) {
@@ -61,7 +114,7 @@ const Settings: React.FC = () => {
             <h1 className="text-xl font-bold mb-4">Settings</h1>
             
             <Tabs defaultValue="account">
-              <TabsList className="grid grid-cols-3 mb-4">
+              <TabsList className="grid grid-cols-4 mb-4">
                 <TabsTrigger value="account" className="flex items-center space-x-1">
                   <UserCog className="h-4 w-4" />
                   <span>Account</span>
@@ -73,6 +126,10 @@ const Settings: React.FC = () => {
                 <TabsTrigger value="privacy" className="flex items-center space-x-1">
                   <Shield className="h-4 w-4" />
                   <span>Privacy</span>
+                </TabsTrigger>
+                <TabsTrigger value="network" className="flex items-center space-x-1">
+                  <Wifi className="h-4 w-4" />
+                  <span>Network</span>
                 </TabsTrigger>
               </TabsList>
               
@@ -140,19 +197,19 @@ const Settings: React.FC = () => {
                     <div className="flex justify-between mb-1">
                       <span className="text-sm">Used</span>
                       <span className="text-sm font-medium">
-                        {(stats.totalSize / (1024 * 1024)).toFixed(2)} MB
+                        {((stats.totalSize ?? 0) / (1024 * 1024)).toFixed(2)} MB
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div 
                         className="bg-primary h-2.5 rounded-full" 
-                        style={{ width: `${(stats.totalSize / stats.allocatedSize) * 100}%` }}
+                        style={{ width: `${(((stats.totalSize ?? 0) / Math.max(1, (stats.allocatedSize ?? 1))) * 100)}%` }}
                       ></div>
                     </div>
                     <div className="flex justify-between mt-1">
                       <span className="text-xs text-gray-500">0 MB</span>
                       <span className="text-xs text-gray-500">
-                        {(stats.allocatedSize / (1024 * 1024 * 1024)).toFixed(1)} GB
+                        {((stats.allocatedSize ?? 0) / (1024 * 1024 * 1024)).toFixed(1)} GB
                       </span>
                     </div>
                   </div>
@@ -294,6 +351,57 @@ const Settings: React.FC = () => {
                     <Shield className="h-4 w-4" />
                     <span>Advanced Privacy Settings</span>
                   </Button>
+                </div>
+              </TabsContent>
+
+              {/* Network Settings */}
+              <TabsContent value="network" className="space-y-4">
+                <div className="space-y-2">
+                  <h2 className="text-md font-semibold">Sync Status</h2>
+                  <div className="bg-gray-100 p-4 rounded-lg dark:bg-[#242526] dark:border dark:border-[#3a3b3c]">
+                    <SyncStatusCompact />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-4 border-t border-gray-100">
+                  <h2 className="text-md font-semibold">Connection</h2>
+                  <div className="bg-gray-100 p-4 rounded-lg dark:bg-[#242526] dark:border dark:border-[#3a3b3c]">
+                    <WebSocketStatus showReconnect={true} />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-4 border-t border-gray-100">
+                  <h2 className="text-md font-semibold">P2P Network</h2>
+                  <p className="text-xs text-gray-500">Nearby devices on the decentralized network</p>
+                  <LocalPeers />
+                </div>
+
+                <div className="space-y-2 pt-4 border-t border-gray-100">
+                  <h2 className="text-md font-semibold">Device Pairing</h2>
+                  <p className="text-xs text-gray-500">Pair this device with others for sync</p>
+                  <DevicePairing />
+                </div>
+
+                <div className="space-y-2 pt-4 border-t border-gray-100">
+                  <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+                      <Bug className="h-4 w-4" />
+                      <span>Debug / Connection Info</span>
+                      <ChevronRight className={`h-4 w-4 transition-transform ${debugOpen ? 'rotate-90' : ''}`} />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3">
+                      <DebugPanel inline />
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+
+                <div className="pt-4 border-t border-gray-100">
+                  <Link href="/diagnostics">
+                    <Button variant="outline" className="flex items-center space-x-1">
+                      <Wifi className="h-4 w-4" />
+                      <span>Full Network Diagnostics</span>
+                    </Button>
+                  </Link>
                 </div>
               </TabsContent>
             </Tabs>

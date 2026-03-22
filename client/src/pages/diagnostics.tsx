@@ -2,8 +2,8 @@ import React from 'react';
 import { Link } from 'wouter';
 import { Wifi, Info, ArrowLeft, Settings, HardDrive, AlertTriangle } from 'lucide-react';
 import NetworkDiagnosticTool from '@/components/NetworkDiagnosticTool';
-import WebSocketStatus from '@/components/WebSocketStatus';
-import Header from '@/components/Header';
+import { WebSocketStatus } from '@/components/WebSocketStatus';
+import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -44,7 +44,7 @@ const DiagnosticsPage: React.FC = () => {
       
       <main className="flex-1 container mx-auto p-4 md:p-6">
         <div className="flex items-center mb-6 gap-4">
-          <Link to="/home">
+          <Link to="/">
             <Button variant="outline" size="sm" className="gap-1">
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
@@ -53,7 +53,7 @@ const DiagnosticsPage: React.FC = () => {
         </div>
         
         {usingMockImplementation && isIPFSReady && (
-          <Alert variant="warning" className="mb-6">
+          <Alert variant="destructive" className="mb-6">
             <HardDrive className="h-4 w-4" />
             <AlertTitle>Using Local Storage Mode</AlertTitle>
             <AlertDescription>
