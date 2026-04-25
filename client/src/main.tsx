@@ -4,6 +4,7 @@ import './lib/polyfills';
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./ghost/telegramTheme.css";
 import { registerServiceWorker } from "./lib/sw-registration";
 
 // Register service worker for offline functionality
@@ -21,9 +22,8 @@ interFontLink.rel = 'stylesheet';
 interFontLink.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap';
 document.head.appendChild(interFontLink);
 
-// Add title
-const title = document.createElement('title');
-title.textContent = 'gHosted - Decentralized Social Media';
+const title = document.createElement("title");
+title.textContent = "Ghost";
 document.head.appendChild(title);
 
 // Create the app

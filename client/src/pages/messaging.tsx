@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -59,7 +59,9 @@ import {
   Users, 
   Lock, 
   Shield,
-  Info
+  Info,
+  Settings2,
+  LogOut,
 } from "lucide-react";
 import {
   Dialog,
@@ -83,6 +85,31 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cryptoService } from "@/lib/cryptography";
 import { ServerRequiredFallback } from "@/components/ServerRequiredFallback";
 import { ipfsUrl } from "@/lib/ipfsGateway";
+import { recordMessageReferences } from "@/lib/ecosystemRefsClient";
+import {
+  getConversationPolicy,
+  updateDefaultDevicePolicy,
+  shouldDownloadVideoForConversation,
+} from "@/lib/conversationPolicyStorage";
+import type { ParticipantMediaPolicy } from "@shared/ecosystemProtocol";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { CreateGroupDialog, type NewGroupConfig } from "@/ghost/CreateGroupDialog";
+import { GhostLogo } from "@/ghost/GhostLogo";
 
 type Conversation = {
   id: number;
@@ -112,6 +139,8 @@ type PrivateMessage = {
   encryptedContent?: string;
   encryptionType?: "asymmetric" | "symmetric" | "hybrid";
   encryptionMetadata?: string;
+  contentCid?: string | null;
+  mediaCid?: string | null;
   status: "sent" | "delivered" | "read" | "failed";
   sentAt: string;
   deliveredAt: string | null;
@@ -176,8 +205,14 @@ const MessageBubble = ({ message, isCurrentUser, otherUser }: { message: Private
           </Avatar>
         )}
         
-        <div className={`px-4 py-2 rounded-lg ${isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-          <div className="text-sm">{getMessageContent(message)}</div>
+        <div
+          className={`px-3 py-1.5 rounded-2xl max-w-[min(28rem,85vw)] ${
+            isCurrentUser
+              ? "bg-tg-bubble-outgoing text-white"
+              : "bg-tg-bubble-incoming text-tg"
+          }`}
+        >
+          <div className="text-sm leading-snug break-words">{getMessageContent(message)}</div>
         </div>
         
         {isCurrentUser && (
@@ -198,10 +233,10 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
 }) => {
   if (!conversations || conversations.length === 0) {
     return (
-      <div className="p-4 text-center text-muted-foreground">
-        <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
-        <p>No conversations yet</p>
-        <p className="text-xs">Start a new conversation by clicking the button above</p>
+      <div className="p-4 text-center text-tg-muted text-sm">
+        <MessageCircle className="h-10 w-10 mx-auto mb-2 opacity-20" />
+        <p>No chats yet</p>
+        <p className="text-xs mt-1">Use + or a contact to start</p>
       </div>
     );
   }
@@ -230,10 +265,10 @@ const ConversationList = ({ conversations, activeConversationId, onSelect, curre
         return (
           <div
             key={conversation.conversationId}
-            className={`flex items-center p-3 rounded-md cursor-pointer transition-colors ${
+            className={`flex items-center p-2.5 cursor-pointer transition-colors ${
               activeConversationId === conversation.conversationId
-                ? "bg-muted"
-                : "hover:bg-muted/50"
+                ? "active-tg"
+                : "hover-tg"
             }`}
             onClick={() => onSelect(conversation)}
           >
@@ -394,7 +429,7 @@ const NewConversationDialog = ({ isOpen, onClose, onStart }: {
 };
 
 const MessagingPage = () => {
-  const { user } = useAuth();
+  const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
   
   // Decentralized users (no server session) cannot use messaging
@@ -407,6 +442,9 @@ const MessagingPage = () => {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [showNewConversation, setShowNewConversation] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [chatPolicyOpen, setChatPolicyOpen] = useState(false);
+  const [policyRev, setPolicyRev] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Load user's conversations
@@ -456,7 +494,19 @@ const MessagingPage = () => {
       
       return await response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      if (user) {
+        const ownerDid = user.did || `did:ghosted:user:${user.id}`;
+        recordMessageReferences({
+          ownerDid,
+          conversationId: variables.conversationId,
+          messageId: data.id,
+          contentCid: data.contentCid ?? undefined,
+          mediaCid: data.mediaCid ?? undefined,
+          plaintextForDigest: variables.content,
+        });
+      }
+
       // Optimistically update the UI for better real-time experience
       
       // 1. Update the active conversation with the new message
@@ -789,39 +839,76 @@ const MessagingPage = () => {
     return null;
   })();
 
+  const activeChatPolicy = useMemo(
+    () =>
+      activeConversation
+        ? getConversationPolicy(activeConversation.conversationId)
+        : null,
+    [activeConversation?.conversationId, policyRev]
+  );
+  const defaultDevPolicy = activeChatPolicy?.devices?.default;
+  const cellularVideoOk = activeConversation
+    ? shouldDownloadVideoForConversation(activeConversation.conversationId, false)
+    : false;
+
+  const onGroupConfig = (c: NewGroupConfig) => {
+    toast({
+      title: "Group spec saved (local)",
+      description: `${c.title} — ${c.cryptoMode}, max ${c.maxMembers} members, ${c.maxMessageKb} KB. IPFS group room wiring comes next.`,
+    });
+  };
+
   return (
-    <div className="container mx-auto py-6 max-w-7xl">
-      {/* Notification about websocket fallback */}
-      <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
-        <div className="flex items-start">
-          <Info className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium">Connection Notice</p>
-            <p className="mt-1">
-              This app uses a hybrid approach with both WebSocket and polling for messages. 
-              WebSockets may occasionally have connection issues, but the app will continue to function normally using polling as a fallback.
-            </p>
-          </div>
+    <div className="ghost-telegram bg-tg-bg text-tg min-h-screen flex flex-col">
+      <div className="flex flex-1 min-h-0">
+        {/* Icon rail (Telegram-style) */}
+        <div className="w-[52px] shrink-0 bg-tg-sidebar border-r border-tg flex flex-col items-center py-2 gap-2">
+          <GhostLogo className="h-8 w-8" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="mt-auto h-9 w-9 text-tg-muted hover:text-tg hover:bg-tg-hover"
+            title="Sign out"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-        {/* Left sidebar - Conversations List */}
-        <div className="col-span-1 bg-card border rounded-lg shadow overflow-hidden flex flex-col">
-          <div className="p-4 border-b flex justify-between items-center">
-            <h2 className="text-xl font-semibold flex items-center">
-              <MessageCircle className="h-5 w-5 mr-2" /> Messages
+
+        {/* Conversations */}
+        <div className="w-full md:w-[320px] shrink-0 bg-tg-sidebar border-r border-tg flex flex-col min-h-0">
+          <div className="p-3 border-b border-tg flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold flex items-center gap-2 text-tg-muted">
+              <MessageCircle className="h-4 w-4" /> Chats
             </h2>
-            
-            <Button size="sm" variant="outline" onClick={() => setShowNewConversation(true)}>
-              <UserPlus className="h-4 w-4 mr-2" /> New
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 border-tg text-tg bg-tg-bg hover-tg"
+                onClick={() => setShowNewConversation(true)}
+                type="button"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 border-tg text-tg bg-tg-bg hover-tg"
+                onClick={() => setShowCreateGroup(true)}
+                type="button"
+              >
+                <Users className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
           
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             {isLoadingConversations ? (
-              <div className="p-4 text-center text-muted-foreground">
-                <p>Loading conversations...</p>
+              <div className="p-4 text-center text-tg-muted text-sm">
+                <p>Loading…</p>
               </div>
             ) : (
               <ConversationList 
@@ -834,12 +921,11 @@ const MessagingPage = () => {
           </ScrollArea>
         </div>
         
-        {/* Right area - Messages */}
-        <div className="col-span-2 bg-card border rounded-lg shadow overflow-hidden flex flex-col">
+        {/* Main thread */}
+        <div className="flex-1 min-w-0 flex flex-col bg-tg-bg min-h-0">
           {activeConversation ? (
             <>
-              {/* Conversation header */}
-              <div className="p-4 border-b flex justify-between items-center">
+              <div className="p-3 border-b border-tg flex justify-between items-center shrink-0">
                 <div className="flex items-center">
                   <Avatar className="h-10 w-10 mr-3">
                     <AvatarImage 
@@ -871,12 +957,119 @@ const MessagingPage = () => {
                           return "Chat";
                         })())}
                     </h3>
-                    <div className="flex items-center text-xs text-primary">
-                      <Lock className="h-3 w-3 mr-1" /> End-to-end encrypted
+                    <div className="flex items-center text-xs text-tg-muted">
+                      <Lock className="h-3 w-3 mr-1" /> Server relay + local policy (E2E path layered next)
                     </div>
                   </div>
                 </div>
                 
+                <div className="flex items-center gap-2">
+                <Sheet open={chatPolicyOpen} onOpenChange={setChatPolicyOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" type="button" className="border-tg text-tg bg-tg-sidebar hover-tg h-8">
+                      <Settings2 className="h-4 w-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Policy</span>
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+                    <SheetHeader>
+                      <SheetTitle>Chat storage (this device)</SheetTitle>
+                    </SheetHeader>
+                    <p className="text-sm text-muted-foreground mt-2 mb-4">
+                      Others cannot force your disk policy; this records how your client prefers to behave for this chat (local only until replicated to IPFS manifests).
+                    </p>
+                    {activeConversation && defaultDevPolicy && (
+                      <div className="space-y-4 mt-4">
+                        <div>
+                          <Label>Video attachments</Label>
+                          <Select
+                            value={defaultDevPolicy.videoMode ?? "wifi"}
+                            onValueChange={(v) => {
+                              updateDefaultDevicePolicy(activeConversation.conversationId, {
+                                videoMode: v as NonNullable<ParticipantMediaPolicy["videoMode"]>,
+                              });
+                              setPolicyRev((x) => x + 1);
+                            }}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="never">Never download automatically</SelectItem>
+                              <SelectItem value="wifi">Wi‑fi only</SelectItem>
+                              <SelectItem value="always">Always allow</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            On cellular (heuristic: non‑Wi‑fi), videos: {cellularVideoOk ? "allowed" : "skipped per policy"}.
+                          </p>
+                        </div>
+                        <div>
+                          <Label>Retention</Label>
+                          <Select
+                            value={defaultDevPolicy.retentionMode ?? "full"}
+                            onValueChange={(v) => {
+                              updateDefaultDevicePolicy(activeConversation.conversationId, {
+                                retentionMode: v as NonNullable<ParticipantMediaPolicy["retentionMode"]>,
+                              });
+                              setPolicyRev((x) => x + 1);
+                            }}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="full">Keep full history locally</SelectItem>
+                              <SelectItem value="window">Rolling window</SelectItem>
+                              <SelectItem value="ephemeral">Prefer ephemeral</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="retDays">Drop messages older than (days, 0 = off)</Label>
+                          <Input
+                            id="retDays"
+                            type="number"
+                            min={0}
+                            key={`ret-${policyRev}`}
+                            defaultValue={defaultDevPolicy.retentionDays ?? 0}
+                            onBlur={(e) => {
+                              const n = parseInt(e.target.value, 10);
+                              if (!Number.isFinite(n) || n < 0) return;
+                              updateDefaultDevicePolicy(activeConversation.conversationId, { retentionDays: n });
+                              setPolicyRev((x) => x + 1);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="maxMsg">Max messages to retain locally (rolling)</Label>
+                          <Input
+                            id="maxMsg"
+                            type="number"
+                            min={1}
+                            key={`max-${policyRev}`}
+                            defaultValue={defaultDevPolicy.maxMessages ?? 500}
+                            onBlur={(e) => {
+                              const n = parseInt(e.target.value, 10);
+                              if (!Number.isFinite(n) || n < 1) return;
+                              updateDefaultDevicePolicy(activeConversation.conversationId, { maxMessages: n });
+                              setPolicyRev((x) => x + 1);
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <Label htmlFor="pinAtt">Auto-pin incoming attachment CIDs</Label>
+                          <Switch
+                            id="pinAtt"
+                            checked={Boolean(defaultDevPolicy.pinAttachments)}
+                            onCheckedChange={(c) => {
+                              updateDefaultDevicePolicy(activeConversation.conversationId, {
+                                pinAttachments: c,
+                              });
+                              setPolicyRev((x) => x + 1);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </SheetContent>
+                </Sheet>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon">
@@ -909,13 +1102,14 @@ const MessagingPage = () => {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                </div>
               </div>
               
               {/* Messages area */}
-              <ScrollArea className="flex-1 p-4">
+              <ScrollArea className="flex-1 p-4 min-h-0">
                 {isLoadingMessages ? (
-                  <div className="text-center text-muted-foreground py-4">
-                    <p>Loading messages...</p>
+                  <div className="text-center text-tg-muted py-4 text-sm">
+                    <p>Loading…</p>
                   </div>
                 ) : activeConversationData?.messages && activeConversationData.messages.length > 0 ? (
                   <div className="space-y-4">
@@ -974,27 +1168,27 @@ const MessagingPage = () => {
                     <div ref={messagesEndRef} />
                   </div>
                 ) : (
-                  <div className="text-center text-muted-foreground py-12">
+                  <div className="text-center text-tg-muted py-12 text-sm">
                     <Lock className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                    <p className="text-lg font-medium">End-to-end Encrypted Chat</p>
+                    <p className="text-lg font-medium text-tg">Encrypted chat</p>
                     <p className="text-sm max-w-md mx-auto mt-2">
-                      Messages are encrypted using advanced cryptography. Only you and the recipient can read them.
+                      Select a thread or start a new conversation. IPFS-pinned group rooms ship in a follow-up.
                     </p>
                   </div>
                 )}
               </ScrollArea>
               
-              {/* Message input */}
-              <div className="p-4 border-t">
-                <form onSubmit={handleSendMessage} className="flex space-x-2">
+              <div className="p-3 border-t border-tg shrink-0">
+                <form onSubmit={handleSendMessage} className="flex gap-2">
                   <Input
                     value={newMessage}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMessage(e.target.value)}
-                    placeholder="Type a message..."
-                    className="flex-1"
+                    placeholder="Message"
+                    className="flex-1 bg-tg-sidebar border-tg text-tg placeholder:text-tg-muted"
                   />
                   <Button 
                     type="submit" 
+                    className="shrink-0"
                     disabled={!newMessage.trim() || sendMessageMutation.isPending}
                   >
                     {sendMessageMutation.isPending ? (
@@ -1007,15 +1201,13 @@ const MessagingPage = () => {
               </div>
             </>
           ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center p-8">
-                <MessageCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-20" />
-                <h3 className="text-xl font-medium mb-2">Your Messages</h3>
-                <p className="text-muted-foreground mb-4 max-w-md">
-                  Select a conversation or start a new encrypted chat with another user.
-                </p>
-                <Button onClick={() => setShowNewConversation(true)}>
-                  <UserPlus className="h-4 w-4 mr-2" /> Start a New Conversation
+            <div className="flex items-center justify-center h-full min-h-[240px]">
+              <div className="text-center p-8 text-tg-muted text-sm max-w-sm">
+                <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                <h3 className="text-lg font-medium mb-2 text-tg">Your chats</h3>
+                <p className="mb-4">Pick a thread or start a new chat.</p>
+                <Button onClick={() => setShowNewConversation(true)} variant="secondary" className="bg-tg-bubble-outgoing text-white">
+                  <UserPlus className="h-4 w-4 mr-2" /> New chat
                 </Button>
               </div>
             </div>
@@ -1027,6 +1219,11 @@ const MessagingPage = () => {
         isOpen={showNewConversation}
         onClose={() => setShowNewConversation(false)}
         onStart={handleStartConversation}
+      />
+      <CreateGroupDialog
+        open={showCreateGroup}
+        onOpenChange={setShowCreateGroup}
+        onCreate={onGroupConfig}
       />
     </div>
   );

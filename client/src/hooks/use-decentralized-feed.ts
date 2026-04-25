@@ -14,6 +14,7 @@ import {
   getFollowing,
   type DecentralizedPost,
 } from "@/lib/orbitdb";
+import { recordPostReferences } from "@/lib/ecosystemRefsClient";
 import type { PostType } from "@/components/Post";
 
 export function useDecentralizedFeed() {
@@ -92,6 +93,12 @@ export function useDecentralizedFeed() {
           likes: 0,
           commentCount: 0,
         };
+        recordPostReferences({
+          ownerDid: user.did,
+          contentCid,
+          postStableRef: `ghosted:post:orbit:${contentCid}`,
+          mediaCid: mediaUrl ?? null,
+        });
         setPosts((prev) => [asPostType, ...prev]);
         return asPostType;
       } catch (e) {

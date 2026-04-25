@@ -6,6 +6,7 @@ import { useIPFS } from '@/contexts/IPFSContext';
 import { useUser } from '@/contexts/UserContext';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { recordPostReferences } from '@/lib/ecosystemRefsClient';
 
 interface CreatePostData {
   content: string;
@@ -31,10 +32,10 @@ export const usePosts = () => {
   
   // Create a new post
   const createPostMutation = useMutation({
-    mutationFn: async (data: CreatePostData): Promise<Post> => {
+    mutationFn: async (data: CreatePostData): Promise<{ post: Post; contentCid: string; mediaCid?: string }> => {
       if (!user) throw new Error('User not logged in');
       
-      let imageCid;
+      let imageCid: string | undefined;
       
       // If there's an image, upload it to IPFS
       if (data.image) {
@@ -53,16 +54,24 @@ export const usePosts = () => {
       const response = await apiRequest('POST', '/api/posts', {
         userId: user.id,
         content: data.content,
-        imageCid,
+        mediaCid: imageCid,
         contentCid
       });
       
-      return response.json();
+      const post = await response.json() as Post;
+      return { post, contentCid, mediaCid: imageCid };
     },
-    onSuccess: () => {
+    onSuccess: ({ post, contentCid, mediaCid }) => {
       // Invalidate posts query to refresh the feed
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-      
+      if (user?.did) {
+        recordPostReferences({
+          ownerDid: user.did,
+          contentCid,
+          postStableRef: `ghosted:post:${post.id}`,
+          mediaCid: mediaCid ?? null,
+        });
+      }
       toast({
         title: "Post Created",
         description: "Your post has been published successfully.",

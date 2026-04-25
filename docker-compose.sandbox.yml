@@ -1,0 +1,39 @@
+# Full stack sandbox: Postgres + gHosted (alt.dream client + full API).
+# Usage (from repo root):
+#   docker compose -f docker-compose.sandbox.yml up --build
+# Then open: http://localhost:5000
+#
+# Messenger-only sandbox (same image; slimmer API + UI):
+#   APP_MODE=messenger docker compose -f docker-compose.sandbox.yml up --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ghosted
+      POSTGRES_PASSWORD: ghosted
+      POSTGRES_DB: ghosted
+    volumes:
+      - sandbox_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghosted"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://ghosted:ghosted@postgres:5432/ghosted
+      SESSION_SECRET: ${SESSION_SECRET:-sandbox-only-change-me}
+      NODE_ENV: production
+      APP_MODE: ${APP_MODE:-full}
+      ALLOW_HTTP_SESSION_COOKIES: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sandbox_pg:

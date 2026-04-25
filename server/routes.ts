@@ -32,6 +32,8 @@ import { fromZodError } from "zod-validation-error";
 import { setupPeerServer, getPeersOnSameNetwork, connectedPeers } from "./peerServer";
 import { setupAuth } from "./auth";
 import { deterministicCid, buildChainLinkSeed, buildGroupChainLinkSeed } from "./chain";
+import { createQrRouter } from "./routes/qr";
+import { startQrSessionCleanup } from "./qrSessions";
 
 // Helper utility for generating random IDs
 function randomId(): string {
@@ -41,33 +43,7 @@ function randomId(): string {
 // WebSocket connections by user
 const wsConnections = new Map<number, Set<WebSocket>>();
 
-// QR login session interface
-interface QRSession {
-  id: string;
-  timestamp: number;
-  expires: number;
-  status: 'pending' | 'authenticated' | 'expired' | 'invalid';
-  userId?: number;
-  username?: string;
-}
-
-// Store QR sessions in memory (in production, use Redis or database)
-const qrSessions = new Map<string, QRSession>();
 const hostingPermissions = new Map<number, { friendUserId: number; maxPinnedCids: number; canHostProfile: boolean; canHostMedia: boolean; createdAt: string }[]>();
-
-// Clean up expired sessions periodically
-setInterval(() => {
-  const now = Date.now();
-  qrSessions.forEach((session, id) => {
-    if (session.expires < now) {
-      session.status = 'expired';
-      // Remove sessions that have been expired for more than 1 hour
-      if (session.expires < now - 3600000) {
-        qrSessions.delete(id);
-      }
-    }
-  });
-}, 60000); // Run cleanup every minute
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const appendUserChainEvent = async (params: {
@@ -105,90 +81,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Setup PeerJS server for peer discovery and WebRTC signaling
   setupPeerServer(app, httpServer);
-  
-  // QR code session management endpoints
-  app.post('/api/qr-session', (req: Request, res: Response) => {
-    const { sessionId, expires } = req.body;
-    
-    if (!sessionId) {
-      return res.status(400).json({ message: "Session ID is required" });
-    }
-    
-    // Create a new QR session
-    const session: QRSession = {
-      id: sessionId,
-      timestamp: Date.now(),
-      expires: expires || Date.now() + 5 * 60 * 1000, // Default 5 minutes expiration
-      status: 'pending'
-    };
-    
-    qrSessions.set(sessionId, session);
-    res.status(201).json({ message: "QR session created" });
-  });
-  
-  app.get('/api/qr-session/:sessionId', (req: Request, res: Response) => {
-    const { sessionId } = req.params;
-    const session = qrSessions.get(sessionId);
-    
-    if (!session) {
-      return res.status(404).json({ message: "QR session not found" });
-    }
-    
-    // Check if session has expired
-    if (session.expires < Date.now()) {
-      session.status = 'expired';
-    }
-    
-    res.json(session);
-  });
-  
-  app.post('/api/qr-login', async (req: Request, res: Response) => {
-    const { sessionId, signature, publicKey, deviceId } = req.body;
-    
-    if (!sessionId || !signature || !publicKey) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-    
-    const session = qrSessions.get(sessionId);
-    
-    if (!session) {
-      return res.status(404).json({ message: "QR session not found" });
-    }
-    
-    if (session.status === 'expired') {
-      return res.status(400).json({ message: "QR session has expired" });
-    }
-    
-    try {
-      // Find user by public key
-      const user = await storage.getUserByPublicKey(publicKey);
-      
-      if (!user) {
-        return res.status(401).json({ message: "Invalid public key" });
-      }
-      
-      // In a real implementation, we would verify the signature
-      // For now, we'll authenticate the user directly
-      
-      // Update the session
-      session.status = 'authenticated';
-      session.userId = user.id;
-      session.username = user.username;
-      
-      // Log in the user
-      req.login(user, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Login failed" });
-        }
-        
-        // Successful login
-        res.json(user);
-      });
-    } catch (error) {
-      console.error("QR login error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+
+  startQrSessionCleanup();
+  app.use("/api", createQrRouter());
   
   // Setup WebSocket server for real-time updates
   // Use a specific path to avoid conflicts with Vite's WebSocket
@@ -510,8 +405,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
+  const appMode = process.env.APP_MODE === "messenger" ? "messenger" : "full";
+
   // AUTH ROUTES are now handled by setupAuth(app)
-  
+
+  if (appMode === "full") {
   // GROUPS API
   app.post("/api/groups", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
@@ -767,9 +665,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Error resolving handle" });
     }
   });
-  
-  // USER ROUTES
-  
+
+  } // end appMode === "full" (groups + resolve-handle)
+
+  // USER ROUTES (messenger + full: search + profile for chat headers)
+
   // Search users for messaging - this route must come BEFORE the /:id route
   app.get("/api/users/search", async (req: Request, res: Response) => {
     try {
@@ -831,9 +731,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Server error fetching user" });
     }
   });
-  
+
+  if (appMode === "full") {
+
   // POST ROUTES
-  
+
   // Create a post
   app.post("/api/posts", async (req: Request, res: Response) => {
     try {
@@ -1842,8 +1744,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ENCRYPTED MESSAGING ROUTES
-  
+  } // end appMode full (posts, social, devices, pins, follow, peers, reactions)
+
+  // ENCRYPTED MESSAGING ROUTES (gHosted.u messenger + alt.dream when using server inbox)
+
   // Create or get a conversation between users
   app.post("/api/conversations", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {
@@ -2128,6 +2032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  if (appMode === "full") {
   // USER CHAIN ROUTES
   app.get("/api/users/:userId/chain", async (req: Request, res: Response) => {
     try {
@@ -2140,6 +2045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Server error fetching user chain" });
     }
   });
+  }
 
   return httpServer;
 }

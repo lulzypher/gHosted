@@ -3,6 +3,8 @@ import { Bell, Search, Settings, MessageSquare, LogOut, User } from 'lucide-reac
 import { ipfsUrl } from '@/lib/ipfsGateway';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
+import { isAltdreamApp } from '@/appMode';
+import { getMessengerAppUrl } from '@/lib/messengerUrl';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -55,11 +57,23 @@ export function Header() {
         </div>
         
         <div className="flex items-center gap-2">
-          <Link href="/messages">
-            <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
+          {isAltdreamApp ? (
+            <a
+              href={getMessengerAppUrl()}
+              target="_blank"
+              rel="noreferrer"
+              title="Open messenger (gHosted.u)"
+              className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c] inline-flex"
+            >
               <MessageSquare className="h-5 w-5" />
-            </button>
-          </Link>
+            </a>
+          ) : (
+            <Link href="/messages">
+              <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]">
+                <MessageSquare className="h-5 w-5" />
+              </button>
+            </Link>
+          )}
           <button className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c]" title="Notifications">
             <Bell className="h-5 w-5" />
           </button>

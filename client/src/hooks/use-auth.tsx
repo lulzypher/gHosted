@@ -34,6 +34,8 @@ type KeyLoginData = {
   challenge: string;
   publicKey: string;
   signature: string;
+  /** `Ed25519` = 32-byte raw public key in base64; omitted = legacy RSA-PSS (SPKI). */
+  algorithm?: "Ed25519" | "ed25519";
 };
 
 // Key-only registration
@@ -45,6 +47,7 @@ type KeyRegisterData = {
   bio?: string;
   did: string;
   publicKey: string;
+  algorithm?: "Ed25519" | "ed25519" | "RS256";
   avatarCid?: string;
 };
 
@@ -108,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         challengeId: data.challengeId,
         publicKey: data.publicKey,
         signature: data.signature,
+        ...(data.algorithm ? { algorithm: data.algorithm } : {}),
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -158,7 +162,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const keyRegisterMutation = useMutation({
     mutationFn: async (data: KeyRegisterData) => {
-      const res = await apiRequest("POST", "/api/register/key", data);
+      const res = await apiRequest("POST", "/api/register/key", {
+        ...data,
+        ...(data.algorithm ? { algorithm: data.algorithm } : {}),
+      });
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || "Registration failed");

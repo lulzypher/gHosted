@@ -4,6 +4,9 @@ import themePlugin from "@replit/vite-plugin-shadcn-theme-json";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+/** `messenger` = gHosted.u inbox-only build; default = alt.dream (full social) client. */
+const isMessengerClient = process.env.VITE_APP_MODE === "messenger";
+
 export default defineConfig({
   plugins: [
     react(),
@@ -27,7 +30,11 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(
+      import.meta.dirname,
+      "dist",
+      isMessengerClient ? "public-messenger" : "public"
+    ),
     emptyOutDir: true,
   },
 });

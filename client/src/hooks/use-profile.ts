@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import { useIPFSContent } from './use-ipfs';
+import { recordProfileAvatarRef } from '@/lib/ecosystemRefsClient';
 
 interface UpdateProfileData {
   displayName?: string;
@@ -63,10 +64,12 @@ export const useProfile = (userId?: number) => {
       const response = await apiRequest('PATCH', `/api/users/${user.id}`, updateData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (updatedUser: User) => {
       // Invalidate user query to refresh the profile
       queryClient.invalidateQueries({ queryKey: [`/api/users/${user?.id}`] });
-      
+      if (updatedUser?.did && updatedUser.avatarCid) {
+        recordProfileAvatarRef({ ownerDid: updatedUser.did, avatarCid: updatedUser.avatarCid });
+      }
       toast({
         title: "Profile Updated",
         description: "Your profile has been updated successfully.",

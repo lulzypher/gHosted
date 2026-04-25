@@ -1,0 +1,48 @@
+/* Telegram-like night palette (inspired, not a pixel clone) */
+.ghost-telegram {
+  --tg-bg: #0e1621;
+  --tg-sidebar: #17212b;
+  --tg-border: #242f3d;
+  --tg-bubble-incoming: #182533;
+  --tg-bubble-outgoing: #5288c1;
+  --tg-text: #f5f5f5;
+  --tg-muted: #89a0b3;
+  --tg-accent: #2ea6ff;
+  --tg-hover: #232e3b;
+  --tg-list-active: #2b5278;
+}
+
+.ghost-telegram,
+.ghost-telegram * {
+  border-color: var(--tg-border);
+}
+
+.bg-tg-bg {
+  background: var(--tg-bg);
+}
+.bg-tg-sidebar {
+  background: var(--tg-sidebar);
+}
+.bg-tg-bubble-incoming {
+  background: var(--tg-bubble-incoming);
+}
+.bg-tg-bubble-outgoing,
+.fill-tg-bubble-outgoing {
+  background: var(--tg-bubble-outgoing);
+  fill: #e1f0ff;
+}
+.text-tg {
+  color: var(--tg-text);
+}
+.text-tg-muted {
+  color: var(--tg-muted);
+}
+.border-tg {
+  border-color: var(--tg-border) !important;
+}
+.hover-tg:hover {
+  background: var(--tg-hover);
+}
+.active-tg {
+  background: var(--tg-list-active);
+}

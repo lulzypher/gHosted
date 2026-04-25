@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import type { User as DbUser, InsertUser } from "@shared/schema";
 import { z } from "zod";
+import { storedEd25519PublicKeyFromRawB64, verifyEd25519Signature } from "./ed25519Auth";
 
 declare global {
   namespace Express {
@@ -111,6 +112,8 @@ const keyRegisterSchema = z.object({
   bio: z.string().max(200).optional(),
   did: z.string(),
   publicKey: z.string(),
+  /** `Ed25519` = 32-byte raw public key, base64; default / omitted = RSA-PSS (SPKI base64). */
+  algorithm: z.enum(["Ed25519", "ed25519", "RS256", "rsa"]).optional(),
   avatarCid: z.string().optional(),
 });
 
@@ -118,6 +121,9 @@ export function setupAuth(app: Express) {
   // Create PostgreSQL session store
   const PostgresSessionStore = connectPg(session);
   
+  const allowHttpSessionCookies =
+    process.env.ALLOW_HTTP_SESSION_COOKIES === "true";
+
   // Configure session
   const sessionSettings: session.SessionOptions = {
     secret: process.env.NODE_ENV === "production" 
@@ -128,7 +134,8 @@ export function setupAuth(app: Express) {
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      // Sandbox / local Docker over HTTP: set ALLOW_HTTP_SESSION_COOKIES=true (never in real prod behind HTTPS).
+      secure: process.env.NODE_ENV === "production" && !allowHttpSessionCookies,
       sameSite: "lax",
     },
     store: new PostgresSessionStore({
@@ -200,7 +207,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/auth/verify", async (req: Request, res: Response, next: NextFunction) => {
-    const { challengeId, publicKey, signature } = req.body;
+    const { challengeId, publicKey, signature, algorithm } = req.body;
     if (!challengeId || !publicKey || !signature) {
       return res.status(400).json({ message: "Missing challengeId, publicKey, or signature" });
     }
@@ -208,10 +215,20 @@ export function setupAuth(app: Express) {
     if (!challenge) {
       return res.status(400).json({ message: "Challenge expired or invalid" });
     }
-    if (!verifyRsaPss(challenge, signature, publicKey)) {
-      return res.status(401).json({ message: "Invalid signature" });
+    const useEd = algorithm === "Ed25519" || algorithm === "ed25519";
+    let user;
+    if (useEd) {
+      if (!verifyEd25519Signature(challenge, signature, publicKey)) {
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+      const stored = storedEd25519PublicKeyFromRawB64(publicKey);
+      user = await storage.getUserByPublicKey(stored);
+    } else {
+      if (!verifyRsaPss(challenge, signature, publicKey)) {
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+      user = await storage.getUserByPublicKey(publicKey);
     }
-    const user = await storage.getUserByPublicKey(publicKey);
     if (!user) {
       return res.status(401).json({ message: "No account linked to this key" });
     }
@@ -237,9 +254,19 @@ export function setupAuth(app: Express) {
       if (!challenge) {
         return res.status(400).json({ message: "Challenge expired or invalid" });
       }
-      if (!verifyRsaPss(challenge, data.signature, data.publicKey)) {
-        return res.status(401).json({ message: "Invalid signature – key ownership not verified" });
+      const useEd = data.algorithm === "Ed25519" || data.algorithm === "ed25519";
+      if (useEd) {
+        if (!verifyEd25519Signature(challenge, data.signature, data.publicKey)) {
+          return res.status(401).json({ message: "Invalid signature – key ownership not verified" });
+        }
+      } else {
+        if (!verifyRsaPss(challenge, data.signature, data.publicKey)) {
+          return res.status(401).json({ message: "Invalid signature – key ownership not verified" });
+        }
       }
+      const storedPublicKey = useEd
+        ? storedEd25519PublicKeyFromRawB64(data.publicKey)
+        : data.publicKey;
       const existingByUsername = await storage.getUserByUsername(data.username);
       if (existingByUsername) {
         return res.status(400).json({ message: "Username already exists" });
@@ -248,7 +275,7 @@ export function setupAuth(app: Express) {
       if (existingByDid) {
         return res.status(400).json({ message: "DID already registered" });
       }
-      const existingByKey = await storage.getUserByPublicKey(data.publicKey);
+      const existingByKey = await storage.getUserByPublicKey(storedPublicKey);
       if (existingByKey) {
         return res.status(400).json({ message: "Public key already registered" });
       }
@@ -257,7 +284,7 @@ export function setupAuth(app: Express) {
         displayName: data.displayName,
         bio: data.bio,
         did: data.did,
-        publicKey: data.publicKey,
+        publicKey: storedPublicKey,
         avatarCid: data.avatarCid,
         password: null,
       });

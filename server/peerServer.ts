@@ -1,7 +1,7 @@
 import { Server } from "http";
 import { ExpressPeerServer } from "peer";
 import { Express } from "express";
-import { log } from "./vite";
+import { log } from "./static-assets";
 
 // Map to track connected peers
 export const connectedPeers = new Map<string, {

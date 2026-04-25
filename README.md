@@ -2,6 +2,10 @@
 
 **gHosted** is a fully decentralized, customizable, peer-to-peer social and media platform built on top of **IPFS**, **DIDs**, and **CRDTs**. You own your identity, your content, your network — across devices, with no central server.
 
+## alt.dream — an alternative dream
+
+**alt.dream** (browser hub; GitHub: [`lulzypher/alt-dream`](https://github.com/lulzypher/alt-dream)) is the name of the ecosystem shell around gHosted, Shadowbox, and whatever you build next. It is an **alternative dream** to corporate centralization: a **dream of freedom** where your IPFS account, personas, and pinning choices stay legible to you — which pins you support, how much space they use, and the bandwidth you share or pull from the mesh. gHosted emits structured **reference events** and exports data so alt.dream can organize that story across apps.
+
 - 🔐 Identity-based (DID) logins  
 - 📡 Peer-to-peer sync across devices  
 - 🧱 Modular, themeable social pages  
@@ -33,6 +37,7 @@ You can build a homepage, customize how it looks, choose how your posts behave (
   - A public profile (homepage)
   - Linked post databases (Twitter-style, blog-style, etc.)
   - Privacy rules (public, private, friends-only, group)
+- **Per-app buckets** — under each persona, data is grouped by ecosystem app (e.g. **gHosted** for social, **Shadowbox** for jobs/chain play). Reference events carry `personaDid` and `ecosystemBucket` so **alt.dream** can show clean, per-bucket views of pins and storage.
 
 ### Post Databases
 - Modular post databases define post types and limits:
@@ -96,6 +101,28 @@ This repo includes the **gHosted Advertisement Book** — a technical pitchbook 
 
 10. **The Future of gHosted**  
     Federation, bridging to ActivityPub, plugin marketplaces, mobile-first features.
+
+---
+
+## How messaging works (today)
+
+gHosted currently has **two messaging paths**:
+
+1. **Server mode (Postgres + logged-in account)** — Conversations and messages go through **your Express API** (`/api/conversations`, WebSockets for live updates). Payloads are stored as rows (`private_messages`, etc.); large bodies can use **IPFS CIDs** on the message row. Delivery is **scoped to whoever runs that node** (your machine or your host), not to the whole public IPFS name space. Development mode may store simplified “encrypted” JSON for local testing.
+
+2. **Fully decentralized (browser-only DID, no DB)** — The Messages UI is **not available** (`ServerRequiredFallback`) in this build because there is no shared mailbox relay wired for pure browser peers yet. Posts and profiles still use OrbitDB + IPFS on the client.
+
+Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) from the Messages screen and is meant to line up with a future **participant-held** model ([`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts)).
+
+**How this fits alt.dream:** the hub is where you see **cross-app** and **cross-persona** pin health, space, and bandwidth; gHosted contributes **social** traffic and **reference events** (including the `ghosted` bucket) for that dashboard.
+
+---
+
+## Ecosystem (alt.dream and CID map)
+
+gHosted emits **versioned reference events** ([`shared/ecosystemProtocol.ts`](shared/ecosystemProtocol.ts)) when posts, messages, and profile media use IPFS CIDs (with optional **persona** and **bucket** fields for alt.dream). The **CID map** UI at `/pin-map` aggregates them in the browser, highlights when the **same content address** is reused in multiple places, and exports JSON for the [alt.dream](https://github.com/lulzypher/alt-dream) hub. See [`docs/alt-dream-integration.md`](docs/alt-dream-integration.md) for the integration contract.
+
+Planned hub metrics (repo size, pins you support, share/leech bandwidth) are described in [`client/src/lib/altDreamMetrics.ts`](client/src/lib/altDreamMetrics.ts) as typed stubs for the alt.dream UI.
 
 ---
 

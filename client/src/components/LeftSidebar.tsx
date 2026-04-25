@@ -3,7 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useIPFS } from '@/contexts/IPFSContext';
 import { ipfsUrl } from '@/lib/ipfsGateway';
-import { Home, User, Users, Bookmark, Settings, Laptop, UsersRound } from 'lucide-react';
+import { Home, User, Users, Bookmark, Settings, Laptop, UsersRound, Map } from 'lucide-react';
 
 export function LeftSidebar() {
   const [location] = useLocation();
@@ -18,6 +18,7 @@ export function LeftSidebar() {
     { icon: Users, label: 'Users Directory', path: '/users' },
     { icon: UsersRound, label: 'Groups', path: '/groups' },
     { icon: Bookmark, label: 'Saved Posts', path: '/saved' },
+    { icon: Map, label: 'CID map', path: '/pin-map' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
   

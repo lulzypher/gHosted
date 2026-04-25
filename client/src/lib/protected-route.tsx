@@ -25,7 +25,7 @@ export function ProtectedRoute({
 
   return (
     <Route path={path} {...rest}>
-      {user ? <Component /> : <Redirect to="/auth" />}
+      {user ? <Component /> : <Redirect to="/identity" />}
     </Route>
   );
 }
