@@ -4,6 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "dev": "cross-env VITE_APP_MODE=messenger APP_MODE=messenger tsx server/index.ts",
     "dev:altdream": "cross-env VITE_APP_MODE=altdream tsx server/index.ts",
     "dev:messenger": "cross-env VITE_APP_MODE=messenger APP_MODE=messenger tsx server/index.ts",

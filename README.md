@@ -2,6 +2,14 @@
 
 **gHosted** is a fully decentralized, customizable, peer-to-peer social and media platform built on top of **IPFS**, **DIDs**, and **CRDTs**. You own your identity, your content, your network — across devices, with no central server.
 
+## Ghost (default client)
+
+The **default** dev and production build is **Ghost**: a **Telegram-style** messenger with **`did:key` + Ed25519** (challenge/response to the API), passphrase-encrypted key storage in the browser, and **1:1 chat** over the existing Express/WebSocket/Postgres path. You land on **`/identity`** to create or unlock a key, then **`/messages`**.
+
+- **Full social / feed / Orbit** UI: use `npm run dev:altdream` (or build `VITE_APP_MODE=altdream`). That is the **legacy** all-in-one client, not the default.
+- **Desktop shell:** Tauri 2 in `src-tauri/` — `npm run tauri:dev` / `npm run tauri:build` (requires [Rust](https://rustup.rs)).
+- **Group + IPFS-pinned rooms** and MLS are on the roadmap; the UI includes a create-group **dialog** with settings (wire-up TBD).
+
 ## alt.dream — an alternative dream
 
 **alt.dream** (browser hub; GitHub: [`lulzypher/alt-dream`](https://github.com/lulzypher/alt-dream)) is the name of the ecosystem shell around gHosted, Shadowbox, and whatever you build next. It is an **alternative dream** to corporate centralization: a **dream of freedom** where your IPFS account, personas, and pinning choices stay legible to you — which pins you support, how much space they use, and the bandwidth you share or pull from the mesh. gHosted emits structured **reference events** and exports data so alt.dream can organize that story across apps.
@@ -106,13 +114,13 @@ This repo includes the **gHosted Advertisement Book** — a technical pitchbook 
 
 ## How messaging works (today)
 
-gHosted currently has **two messaging paths**:
+1. **Ghost (default) — `did:key` + Ed25519 + server session** — Register or sign in at **`/identity`**. The server stores **verifying** keys as `ed25519:` + base64 (32-byte raw). Messages use the **server mailbox** API (`/api/conversations`, WebSockets). Legacy **RSA** key accounts may still exist in the DB; the default UI only onboards **Ed25519**.
 
-1. **Server mode (Postgres + logged-in account)** — Conversations and messages go through **your Express API** (`/api/conversations`, WebSockets for live updates). Payloads are stored as rows (`private_messages`, etc.); large bodies can use **IPFS CIDs** on the message row. Delivery is **scoped to whoever runs that node** (your machine or your host), not to the whole public IPFS name space. Development mode may store simplified “encrypted” JSON for local testing.
+2. **All-in-one (alt.dream) build —** `dev:altdream` can pair **DID/Orbit** social features with the same server; the heavy feed stack is not what runs when you use plain `npm run dev`.
 
-2. **Fully decentralized (browser-only DID, no DB)** — The Messages UI is **not available** (`ServerRequiredFallback`) in this build because there is no shared mailbox relay wired for pure browser peers yet. Posts and profiles still use OrbitDB + IPFS on the client.
+3. **Pure browser, no server mailbox** — Not the focus of the default Ghost path; Orbit/social still exist in the alternative client for experimentation.
 
-Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) from the Messages screen and is meant to line up with a future **participant-held** model ([`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts)).
+Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) on the messages screen; see [`client/src/lib/conversationPolicyStorage.ts`](client/src/lib/conversationPolicyStorage.ts) and [`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts) for the intended alt.dream alignment.
 
 **How this fits alt.dream:** the hub is where you see **cross-app** and **cross-persona** pin health, space, and bandwidth; gHosted contributes **social** traffic and **reference events** (including the `ghosted` bucket) for that dashboard.
 
@@ -120,7 +128,7 @@ Per-chat **storage policy** (retention, video download mode, attachment auto-pin
 
 ## Ecosystem (alt.dream and CID map)
 
-gHosted emits **versioned reference events** ([`shared/ecosystemProtocol.ts`](shared/ecosystemProtocol.ts)) when posts, messages, and profile media use IPFS CIDs (with optional **persona** and **bucket** fields for alt.dream). The **CID map** UI at `/pin-map` aggregates them in the browser, highlights when the **same content address** is reused in multiple places, and exports JSON for the [alt.dream](https://github.com/lulzypher/alt-dream) hub. See [`docs/alt-dream-integration.md`](docs/alt-dream-integration.md) for the integration contract.
+gHosted emits **versioned reference events** ([`shared/ecosystemProtocol.ts`](shared/ecosystemProtocol.ts)) when posts, messages, and profile media use IPFS CIDs (with optional **persona** and **bucket** fields for alt.dream). A **CID map** page exists in the client ([`client/src/pages/pin-map.tsx`](client/src/pages/pin-map.tsx)); it is not routed in the **default** Ghost app — use the **altdream** dev build or link it manually for that UI. Exports are still for the [alt.dream](https://github.com/lulzypher/alt-dream) hub. See [`docs/alt-dream-integration.md`](docs/alt-dream-integration.md) for the integration contract.
 
 Planned hub metrics (repo size, pins you support, share/leech bandwidth) are described in [`client/src/lib/altDreamMetrics.ts`](client/src/lib/altDreamMetrics.ts) as typed stubs for the alt.dream UI.
 
@@ -135,27 +143,37 @@ Planned hub metrics (repo size, pins you support, share/leech bandwidth) are des
 
 ### Install & Run
 
+**One-time setup** (Node **18+**, [PostgreSQL](https://www.postgresql.org/) for sign-in and DMs — create a DB and set `DATABASE_URL` in `.env`):
+
 ```bash
-# Clone and install
 git clone <your-repo-url>
 cd gHosted
 
-npm install
-
-# Start the app (dev server + API)
+# Installs dependencies; creates .env from .env.example if missing
+npm run setup
+# Edit .env: point DATABASE_URL at your database, then:
 npm run dev
 ```
 
-Open **http://localhost:5000** in your browser.
+**Faster start** (after the first `npm run setup`):
+
+- **Windows:** `start.ps1` (or double‑click in Explorer if execution policy allows), or `npm run dev`
+- **macOS / Linux:** `chmod +x start.sh && ./start.sh`, or `npm run dev`
+
+Open **http://localhost:5000** — you will be redirected to **`/identity`** until you create or unlock a key, then to **`/messages`**.
+
+**Social / full alt.dream client (feed, pin-map in router, etc.):**
+```bash
+npm run dev:altdream
+```
 
 ### How it runs (local-node model)
 
-gHosted is designed to run **on your own machine**. When you run `npm run dev`:
+gHosted is designed to run **on your own machine**. When you run `npm run dev` (default **messenger** mode):
 
-- The Express server and (optionally) Postgres run **locally on your PC**
-- There is no central cloud; each user runs their own node
-- Content syncs between nodes via IPFS, OrbitDB, and Helia
-- Your data stays with you — Postgres (when used) is for your local node's state only
+- The Express server and (for conversations) **Postgres** run **locally** on your machine
+- The **Ghost** UI talks to that API; IPFS/Orbit are more prominent in the **`dev:altdream`** client
+- Production messaging builds use `APP_MODE=messenger` and static files under `dist/public-messenger/`
 
 ### Environment Variables
 
@@ -194,8 +212,14 @@ npm run dev
 
 ### Scripts
 
-| Command      | Description                    |
-| ------------ | ------------------------------ |
-| `npm run dev`  | Start dev server (port 5000)   |
-| `npm run build`| Build for production           |
-| `npm run check`| TypeScript check               |
+| Command | Description |
+|--------|-------------|
+| `npm run dev` | Dev server on port **5000**; **`VITE_APP_MODE=messenger`**, `APP_MODE=messenger` (Ghost) |
+| `npm run dev:altdream` | Full social / alt.dream-oriented client (not the default) |
+| `npm run dev:messenger` | Same as `dev` (explicit) |
+| `npm run build` | Builds altdream + messenger clients + server bundle |
+| `npm run build:server` | Server bundle to `dist/` only |
+| `npm run start:messenger` | Production: `APP_MODE=messenger` + `node dist/index.js` |
+| `npm run tauri:dev` / `tauri:build` | Tauri 2 desktop (needs Rust) |
+| `npm run check` | TypeScript check |
+| `npm test` | Server tests (e.g. `server/chain.test.ts`) |
