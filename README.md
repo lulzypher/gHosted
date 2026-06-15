@@ -14,8 +14,8 @@ Same **`did:key`**, same gateway mailbox — different webapps. Production messe
 The default build is **Ghost**: Telegram-style 1:1 chat with **`did:key` + Ed25519**, passphrase-encrypted keys, and per-contact encryption.
 
 - **This repo deploys to gHosted.u** — inbox-only UI (`VITE_APP_MODE=messenger`).
-- **Target backend:** alt.dream gateway **`/v1/messenger/*`** (same inbox the social site links to).
-- **Today:** dev still uses Express + Postgres **`/api/conversations`** — migrate to the gateway (see alt.dream [planning](https://github.com/lulzypher/alt.dream/blob/main/docs/planning.md)).
+- **Backend:** alt.dream gateway **`/v1/messenger/*`** (via dev proxy **`/gw`** or `VITE_GATEWAY_URL`).
+- **Today:** legacy Express `/api/conversations` remains in repo for `dev:altdream` only — **not** used by Ghost.
 - **Tauri / mobile:** alternate shells for the same gHosted.u experience.
 - **Legacy:** `npm run dev:altdream` — old all-in-one social client; use **alt.dream** for feed/profile instead.
 
@@ -69,27 +69,27 @@ Reference events from chat attachments feed the alt.dream pin map. See [`docs/al
 
 ## 🚀 Quick Start
 
+**Requires a running [alt.dream gateway](https://github.com/lulzypher/alt.dream)** (`pnpm dev` in that repo → `:8787`).
+
 ```bash
 git clone https://github.com/lulzypher/gHosted.git
 cd gHosted
 npm run setup
-# Edit .env DATABASE_URL, then:
 npm run dev
 ```
 
-Open **http://localhost:5000** → **`/identity`** → **`/messages`**.
+Open **http://localhost:5000** → create/unlock identity → **http://localhost:5000/messages**.
+
+Vite proxies **`/gw` → gateway `/v1`** so you do not need `DATABASE_URL` for messenger mode. Optional override: `VITE_GATEWAY_URL=http://127.0.0.1:8787`.
 
 Pair with alt.dream social dev:
 
 ```bash
-# Terminal 1 — alt.dream (repo root)
-pnpm dev          # social at http://localhost:5173
+# alt.dream repo — terminal 1
+pnpm dev          # http://localhost:5173
 
-# Terminal 2 — gHosted
-npm run dev       # messenger at http://localhost:5000
-
-# alt.dream .env
-VITE_MESSENGER_URL=http://localhost:5000
+# gHosted — terminal 2
+npm run dev       # http://localhost:5000 → gHosted.u messenger
 ```
 
 ### Scripts

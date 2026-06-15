@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Redirect } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,32 +10,27 @@ import { GhostLogo } from "./GhostLogo";
 import "./telegramTheme.css";
 import {
   generateEd25519Identity,
-  signUtf8Message,
   type Ed25519Identity,
 } from "@/lib/ed25519Identity";
 import { hasLocalIdentity, loadIdentity, saveNewIdentity } from "@/lib/ghostKeystore";
+import { useGatewaySession, ensureProfile } from "@/contexts/GatewaySession";
 import { Loader2 } from "lucide-react";
-
-async function fetchChallenge(): Promise<{ challengeId: string; challenge: string }> {
-  const res = await fetch("/api/auth/challenge", { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to get challenge");
-  return res.json();
-}
+import { apiConfig } from "@/lib/gatewayApi";
+import { readGatewaySession } from "@/lib/gatewayAuth";
 
 export default function IdentityPage() {
-  const { user, keyLoginMutation, keyRegisterMutation } = useAuth();
+  const { session, login } = useGatewaySession();
   const { toast } = useToast();
   const [tab, setTab] = useState<"create" | "unlock">(hasLocalIdentity() ? "unlock" : "create");
   const [submitting, setSubmitting] = useState(false);
 
-  const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
   const [unlockPass, setUnlockPass] = useState("");
   const [preview, setPreview] = useState<Ed25519Identity | null>(null);
 
-  if (user) {
+  if (session) {
     return <Redirect to="/messages" />;
   }
 
@@ -56,29 +50,22 @@ export default function IdentityPage() {
       toast({ title: "Passphrases do not match", variant: "destructive" });
       return;
     }
-    if (!username.trim() || !displayName.trim()) {
-      toast({ title: "Required fields", description: "Username and display name.", variant: "destructive" });
+    if (!displayName.trim()) {
+      toast({ title: "Display name required", variant: "destructive" });
       return;
     }
     setSubmitting(true);
     try {
       const id = preview ?? generateEd25519Identity();
-      const { challengeId, challenge } = await fetchChallenge();
-      const signature = signUtf8Message(challenge, id.privateKeyB64);
-      await keyRegisterMutation.mutateAsync({
-        challengeId,
-        signature,
-        username: username.trim(),
-        displayName: displayName.trim(),
-        did: id.did,
-        publicKey: id.publicKeyRawB64,
-        algorithm: "Ed25519",
-      });
       await saveNewIdentity(id, pass);
+      await login(id.did, id.privateKeyB64);
+      const s = readGatewaySession();
+      if (s) await ensureProfile(apiConfig(s), displayName.trim());
       setPreview(null);
+      toast({ title: "Signed in", description: "Connected to alt.dream gateway." });
     } catch (err) {
       toast({
-        title: "Registration failed",
+        title: "Setup failed",
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
@@ -93,15 +80,8 @@ export default function IdentityPage() {
     try {
       const k = await loadIdentity(unlockPass);
       if (k.algorithm !== "Ed25519") throw new Error("Unsupported keystore");
-      const { challengeId, challenge } = await fetchChallenge();
-      const signature = signUtf8Message(challenge, k.privateKeyB64);
-      await keyLoginMutation.mutateAsync({
-        challengeId,
-        challenge,
-        publicKey: k.publicKeyRawB64,
-        signature,
-        algorithm: "Ed25519",
-      });
+      await login(k.did, k.privateKeyB64);
+      toast({ title: "Signed in", description: "Connected to alt.dream gateway." });
     } catch (err) {
       toast({
         title: "Unlock failed",
@@ -122,7 +102,7 @@ export default function IdentityPage() {
           </div>
           <CardTitle className="text-2xl">Ghost</CardTitle>
           <CardDescription className="text-tg-muted">
-            did:key + Ed25519. Passphrase encrypts your key locally. No account password on the server.
+            Sign in to your alt.dream gateway. Passphrase encrypts your key on this device only.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -135,16 +115,6 @@ export default function IdentityPage() {
             </TabsList>
             <TabsContent value="create" className="mt-4 space-y-3">
               <form onSubmit={onCreate} className="space-y-3">
-                <div>
-                  <Label htmlFor="u">Username</Label>
-                  <Input
-                    id="u"
-                    className="bg-tg-bg border-tg"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                  />
-                </div>
                 <div>
                   <Label htmlFor="d">Display name</Label>
                   <Input
@@ -181,23 +151,11 @@ export default function IdentityPage() {
                     <span className="text-tg font-medium">did:</span> {preview.did}
                   </p>
                 )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 border-tg"
-                    onClick={onGenerate}
-                    disabled={submitting}
-                  >
-                    Generate keys
-                  </Button>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={submitting}
-                >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Register & sign in"}
+                <Button type="button" variant="outline" className="w-full border-tg" onClick={onGenerate} disabled={submitting}>
+                  Generate keys
+                </Button>
+                <Button type="submit" className="w-full" disabled={submitting}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create & sign in"}
                 </Button>
               </form>
             </TabsContent>
@@ -215,7 +173,7 @@ export default function IdentityPage() {
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={submitting}>
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Unlock"}
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Unlock & sign in"}
                 </Button>
               </form>
             </TabsContent>

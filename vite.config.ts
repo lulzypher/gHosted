@@ -29,6 +29,16 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  server: {
+    port: 5000,
+    proxy: {
+      "/gw": {
+        target: "http://127.0.0.1:8787",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/gw/, "/v1"),
+      },
+    },
+  },
   build: {
     outDir: path.resolve(
       import.meta.dirname,
