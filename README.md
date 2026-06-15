@@ -1,37 +1,36 @@
-# gHosted — DreamSystemz messaging add-on
+# gHosted — messaging for alt.dream
 
-**gHosted** is the **messaging add-on** for [**DreamSystemz**](https://github.com/lulzypher/alt.dream). Use [**alt.dream**](https://github.com/lulzypher/alt.dream) as the ecosystem **browser** (identity, feed, friends, pin map); install **gHosted** when you want dedicated **Ghost** messaging — same `did:key`, same gateway APIs, optional desktop shell.
+**gHosted** is the **Ghost messaging app that ships with [**alt.dream**](https://github.com/lulzypher/alt.dream)** — the DreamSystemz browser. Think **Facebook + Messenger**: alt.dream is feed, friends, and profile; **gHosted** is the inbox. **One account (`did:key`), one gateway mailbox** — Ghost can run inside the browser, in its own tab, or in a Tauri desktop shell, but it is not a second messaging service.
 
 ## Ghost (default client)
 
-The **default** dev and production build is **Ghost**: a **Telegram-style** messenger with **`did:key` + Ed25519** (challenge/response to the API), passphrase-encrypted key storage in the browser, and **1:1 chat** over the Express/WebSocket/Postgres path. You land on **`/identity`** to create or unlock a key, then **`/messages`**.
+The **default** build is **Ghost**: Telegram-style 1:1 chat with **`did:key` + Ed25519**, passphrase-encrypted keys, and per-contact encryption options.
 
-- **Desktop shell:** Tauri 2 in `src-tauri/` — `npm run tauri:dev` / `npm run tauri:build` (requires [Rust](https://rustup.rs)).
-- **Group + IPFS-pinned rooms** and MLS are on the roadmap; the UI includes a create-group **dialog** with settings (wire-up TBD).
-- **Legacy experimental bundle:** `npm run dev:altdream` (or `VITE_APP_MODE=altdream`) builds an older all-in-one social client — **not** the product story; the browser in alt.dream owns feed/profile UX now.
+- **Target backend:** alt.dream gateway **`/v1/messenger/*`** (same inbox as the browser Messages tab).
+- **Today:** dev still runs an Express + Postgres **`/api/conversations`** path — **legacy**; migrate Ghost to the gateway API (see alt.dream [planning — Messaging](https://github.com/lulzypher/alt.dream/blob/main/docs/planning.md)).
+- **Desktop shell:** Tauri 2 in `src-tauri/` — `npm run tauri:dev` / `npm run tauri:build`.
+- **Legacy experimental bundle:** `npm run dev:altdream` — old all-in-one social client; feed/profile live in alt.dream now.
 
-## alt.dream — the DreamSystemz browser
+## alt.dream — the browser
 
-[**alt.dream**](https://github.com/lulzypher/alt.dream) is the **browser for DreamSystemz**: personas, feed, friends, pin toolkit, and gateway sync. gHosted is an **add-on** that focuses on messaging.
+[**alt.dream**](https://github.com/lulzypher/alt.dream) is the **DreamSystemz browser**: personas, feed, friends, pin toolkit, gateway sync. **gHosted ships with it** as the messaging app.
 
-- Same **`keystore.json`** and **`POST /v1/auth/*`** flow as the browser (see alt.dream [SHARED_IDENTITY](https://github.com/lulzypher/alt.dream/blob/main/docs/SHARED_IDENTITY.md)).
-- gHosted emits **reference events** (CID map exports) so the browser can chart pins and buckets per persona.
-- Optional **`VITE_MESSENGER_URL`** on the browser opens this add-on in a dedicated tab.
+- Same **`keystore.json`** and **`POST /v1/auth/*`** (see [SHARED_IDENTITY](https://github.com/lulzypher/alt.dream/blob/main/docs/SHARED_IDENTITY.md)).
+- Chat attachments emit **reference events** for the browser pin map.
+- Install alt.dream + gHosted together; point Ghost at the same gateway URL.
 
-**Ecosystem features gHosted contributes today**
+**What Ghost provides**
 
-- 🔐 Identity-based (`did:key`) messaging  
-- 💬 Encrypted 1:1 chat via your gateway mailbox  
-- 📎 Attachments and IPFS CIDs (reference events for the browser)  
-- 🖥️ Tauri desktop shell for a focused inbox  
-
-Broader social mesh, themes, and modular post databases remain **roadmap / legacy code paths** — not the default add-on experience.
+- 🔐 `did:key` messaging on the shared gateway inbox  
+- 💬 Telegram-style UI and encryption scheme picker  
+- 📎 Attachments → IPFS CIDs + reference events  
+- 🖥️ Tauri / mobile shells for a focused inbox  
 
 ---
 
 ## 🧠 What is gHosted?
 
-gHosted is the **messaging add-on** for DreamSystemz: reclaim **private conversation** without a corporate inbox.
+gHosted is the **Ghost messaging app bundled with alt.dream**: reclaim **private conversation** on the **same gateway inbox** as the browser — not a separate product with its own mailbox.
 
 - A **Ghost** messenger (server-assisted mailbox + client-side encryption options)  
 - **Local-first** key material — passphrase unlock in the browser  
@@ -110,7 +109,7 @@ This repo includes the **gHosted Advertisement Book** — a technical pitchbook 
 
 Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) on the messages screen; see [`client/src/lib/conversationPolicyStorage.ts`](client/src/lib/conversationPolicyStorage.ts) and [`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts) for alignment with alt.dream protocol types.
 
-**How this fits DreamSystemz:** **alt.dream** is the browser for cross-persona pin health and buckets; **gHosted** is the messaging add-on that contributes **`ghosted`** reference events and encrypted chat.
+**How this fits DreamSystemz:** **alt.dream** is the browser; **gHosted** is its messaging app. **One inbox** on the gateway (target). Ghost contributes **`ghosted`** reference events for pin-map views.
 
 ---
 
