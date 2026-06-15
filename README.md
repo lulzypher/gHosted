@@ -1,74 +1,62 @@
-# gHosted – Group Hosted Social
+# gHosted — DreamSystemz messaging add-on
 
-**gHosted** is a fully decentralized, customizable, peer-to-peer social and media platform built on top of **IPFS**, **DIDs**, and **CRDTs**. You own your identity, your content, your network — across devices, with no central server.
+**gHosted** is the **messaging add-on** for [**DreamSystemz**](https://github.com/lulzypher/alt.dream). Use [**alt.dream**](https://github.com/lulzypher/alt.dream) as the ecosystem **browser** (identity, feed, friends, pin map); install **gHosted** when you want dedicated **Ghost** messaging — same `did:key`, same gateway APIs, optional desktop shell.
 
 ## Ghost (default client)
 
-The **default** dev and production build is **Ghost**: a **Telegram-style** messenger with **`did:key` + Ed25519** (challenge/response to the API), passphrase-encrypted key storage in the browser, and **1:1 chat** over the existing Express/WebSocket/Postgres path. You land on **`/identity`** to create or unlock a key, then **`/messages`**.
+The **default** dev and production build is **Ghost**: a **Telegram-style** messenger with **`did:key` + Ed25519** (challenge/response to the API), passphrase-encrypted key storage in the browser, and **1:1 chat** over the Express/WebSocket/Postgres path. You land on **`/identity`** to create or unlock a key, then **`/messages`**.
 
-- **Full social / feed / Orbit** UI: use `npm run dev:altdream` (or build `VITE_APP_MODE=altdream`). That is the **legacy** all-in-one client, not the default.
 - **Desktop shell:** Tauri 2 in `src-tauri/` — `npm run tauri:dev` / `npm run tauri:build` (requires [Rust](https://rustup.rs)).
 - **Group + IPFS-pinned rooms** and MLS are on the roadmap; the UI includes a create-group **dialog** with settings (wire-up TBD).
+- **Legacy experimental bundle:** `npm run dev:altdream` (or `VITE_APP_MODE=altdream`) builds an older all-in-one social client — **not** the product story; the browser in alt.dream owns feed/profile UX now.
 
-## alt.dream — an alternative dream
+## alt.dream — the DreamSystemz browser
 
-**alt.dream** (browser hub; GitHub: [`lulzypher/alt-dream`](https://github.com/lulzypher/alt-dream)) is the name of the ecosystem shell around gHosted, Shadowbox, and whatever you build next. It is an **alternative dream** to corporate centralization: a **dream of freedom** where your IPFS account, personas, and pinning choices stay legible to you — which pins you support, how much space they use, and the bandwidth you share or pull from the mesh. gHosted emits structured **reference events** and exports data so alt.dream can organize that story across apps.
+[**alt.dream**](https://github.com/lulzypher/alt.dream) is the **browser for DreamSystemz**: personas, feed, friends, pin toolkit, and gateway sync. gHosted is an **add-on** that focuses on messaging.
 
-- 🔐 Identity-based (DID) logins  
-- 📡 Peer-to-peer sync across devices  
-- 🧱 Modular, themeable social pages  
-- 📚 Public and private media libraries  
-- 🌍 Groups, subscriptions, and pinning  
-- ⚙️ App framework with addon/plugin support
+- Same **`keystore.json`** and **`POST /v1/auth/*`** flow as the browser (see alt.dream [SHARED_IDENTITY](https://github.com/lulzypher/alt.dream/blob/main/docs/SHARED_IDENTITY.md)).
+- gHosted emits **reference events** (CID map exports) so the browser can chart pins and buckets per persona.
+- Optional **`VITE_MESSENGER_URL`** on the browser opens this add-on in a dedicated tab.
+
+**Ecosystem features gHosted contributes today**
+
+- 🔐 Identity-based (`did:key`) messaging  
+- 💬 Encrypted 1:1 chat via your gateway mailbox  
+- 📎 Attachments and IPFS CIDs (reference events for the browser)  
+- 🖥️ Tauri desktop shell for a focused inbox  
+
+Broader social mesh, themes, and modular post databases remain **roadmap / legacy code paths** — not the default add-on experience.
 
 ---
 
 ## 🧠 What is gHosted?
 
-gHosted is a tool to reclaim control of your digital identity, content, and connections. It's:
-- A decentralized media manager  
-- A user-owned social network  
-- A multi-device sync platform  
-- A skinable framework for digital publishing
+gHosted is the **messaging add-on** for DreamSystemz: reclaim **private conversation** without a corporate inbox.
 
-Everything is local-first, IPFS-backed, signed with your DID, and optionally shareable with others via direct sync or peer pinning.
+- A **Ghost** messenger (server-assisted mailbox + client-side encryption options)  
+- **Local-first** key material — passphrase unlock in the browser  
+- **IPFS-backed** attachments with exportable **reference events** for alt.dream  
+- Optional **Tauri** shell for a dedicated desktop inbox  
 
-You can build a homepage, customize how it looks, choose how your posts behave (like Twitter, Facebook, or GitHub), and share that profile with others — who can help keep it alive by pinning.
+Everything sensitive stays **client-decryptable**; the operator gateway stores ciphertext and metadata you choose to sync.
 
 ---
 
 ## ⚙️ Core Architecture
 
 ### Personas
+
 - Each user creates one or more **personas** (DID-based).
-- A persona has:
-  - A public profile (homepage)
-  - Linked post databases (Twitter-style, blog-style, etc.)
-  - Privacy rules (public, private, friends-only, group)
-- **Per-app buckets** — under each persona, data is grouped by ecosystem app (e.g. **gHosted** for social, **Shadowbox** for jobs/chain play). Reference events carry `personaDid` and `ecosystemBucket` so **alt.dream** can show clean, per-bucket views of pins and storage.
+- A persona has keys, profile hints, and optional public metadata.
+- **Per-app buckets** — under each persona, messaging traffic tags **`ecosystemBucket`** (e.g. `ghosted`) so **alt.dream** can show per-bucket pin and storage views alongside other add-ons.
 
-### Post Databases
-- Modular post databases define post types and limits:
-  - `twitter.db` → short text posts (X-style)
-  - `facebook.db` → media-rich status updates
-  - `github.db` → changelogs, commits, releases
-- Each post is:
-  - Cryptographically signed
-  - Saved to IPFS
-  - Subscribable & cacheable by others
+### Post Databases *(roadmap / legacy `dev:altdream`)*
 
-### Frontend/Theme Layer
-- Homepage is fully themeable (HTML/CSS/JS or predefined skins)
-- Users can apply:
-  - MySpace-style pages
-  - Classic forums
-  - Modern card views
-- UI loads content from the post databases, modular and dynamic
+Modular post databases (Twitter-style, blog-style, etc.) exist in the codebase for experimentation. The **default Ghost add-on** does not surface them; the **alt.dream browser** owns feed and profile UX.
 
-### Social Mesh
-- Friends and groups can pin your content to help it persist
-- Users can subscribe to a full profile or a specific database
-- Devices obey sync rules (e.g., "sync photos to phone", "cache books to server")
+### Social Mesh *(roadmap)*
+
+Friends, groups, and mutual pinning narratives are shared ecosystem goals; Ghost v1 focuses on **1:1 messaging** and reference events the browser can aggregate.
 
 ---
 
@@ -116,19 +104,19 @@ This repo includes the **gHosted Advertisement Book** — a technical pitchbook 
 
 1. **Ghost (default) — `did:key` + Ed25519 + server session** — Register or sign in at **`/identity`**. The server stores **verifying** keys as `ed25519:` + base64 (32-byte raw). Messages use the **server mailbox** API (`/api/conversations`, WebSockets). Legacy **RSA** key accounts may still exist in the DB; the default UI only onboards **Ed25519**.
 
-2. **All-in-one (alt.dream) build —** `dev:altdream` can pair **DID/Orbit** social features with the same server; the heavy feed stack is not what runs when you use plain `npm run dev`.
+2. **alt.dream browser** — Feed, friends, profile, and a lightweight gateway inbox live in the [alt.dream hub](https://github.com/lulzypher/alt.dream). Open **gHosted** for the full Ghost experience (desktop/mobile).
 
-3. **Pure browser, no server mailbox** — Not the focus of the default Ghost path; Orbit/social still exist in the alternative client for experimentation.
+3. **Pure browser, no server mailbox** — Not the focus of the default Ghost path; experimental Orbit/social code remains under `dev:altdream`.
 
-Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) on the messages screen; see [`client/src/lib/conversationPolicyStorage.ts`](client/src/lib/conversationPolicyStorage.ts) and [`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts) for the intended alt.dream alignment.
+Per-chat **storage policy** (retention, video download mode, attachment auto-pin) is **local to the browser** (`localStorage`) on the messages screen; see [`client/src/lib/conversationPolicyStorage.ts`](client/src/lib/conversationPolicyStorage.ts) and [`client/src/lib/chatReplicationProto.ts`](client/src/lib/chatReplicationProto.ts) for alignment with alt.dream protocol types.
 
-**How this fits alt.dream:** the hub is where you see **cross-app** and **cross-persona** pin health, space, and bandwidth; gHosted contributes **social** traffic and **reference events** (including the `ghosted` bucket) for that dashboard.
+**How this fits DreamSystemz:** **alt.dream** is the browser for cross-persona pin health and buckets; **gHosted** is the messaging add-on that contributes **`ghosted`** reference events and encrypted chat.
 
 ---
 
 ## Ecosystem (alt.dream and CID map)
 
-gHosted emits **versioned reference events** ([`shared/ecosystemProtocol.ts`](shared/ecosystemProtocol.ts)) when posts, messages, and profile media use IPFS CIDs (with optional **persona** and **bucket** fields for alt.dream). A **CID map** page exists in the client ([`client/src/pages/pin-map.tsx`](client/src/pages/pin-map.tsx)); it is not routed in the **default** Ghost app — use the **altdream** dev build or link it manually for that UI. Exports are still for the [alt.dream](https://github.com/lulzypher/alt-dream) hub. See [`docs/alt-dream-integration.md`](docs/alt-dream-integration.md) for the integration contract.
+gHosted emits **versioned reference events** ([`shared/ecosystemProtocol.ts`](shared/ecosystemProtocol.ts)) when messages and profile media use IPFS CIDs (with optional **persona** and **bucket** fields for alt.dream). A **CID map** page exists in the client ([`client/src/pages/pin-map.tsx`](client/src/pages/pin-map.tsx)); it is not routed in the **default** Ghost app — use the **alt.dream browser** or link manually. Exports target the [alt.dream](https://github.com/lulzypher/alt.dream) hub. See [`docs/alt-dream-integration.md`](docs/alt-dream-integration.md).
 
 Planned hub metrics (repo size, pins you support, share/leech bandwidth) are described in [`client/src/lib/altDreamMetrics.ts`](client/src/lib/altDreamMetrics.ts) as typed stubs for the alt.dream UI.
 
@@ -146,7 +134,7 @@ Planned hub metrics (repo size, pins you support, share/leech bandwidth) are des
 **One-time setup** (Node **18+**, [PostgreSQL](https://www.postgresql.org/) for sign-in and DMs — create a DB and set `DATABASE_URL` in `.env`):
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/lulzypher/gHosted.git
 cd gHosted
 
 # Installs dependencies; creates .env from .env.example if missing
@@ -162,17 +150,17 @@ npm run dev
 
 Open **http://localhost:5000** — you will be redirected to **`/identity`** until you create or unlock a key, then to **`/messages`**.
 
-**Social / full alt.dream client (feed, pin-map in router, etc.):**
+**Legacy experimental social client (not the add-on default):**
 ```bash
 npm run dev:altdream
 ```
 
 ### How it runs (local-node model)
 
-gHosted is designed to run **on your own machine**. When you run `npm run dev` (default **messenger** mode):
+gHosted is designed to run **on your own machine**. When you run `npm run dev` (default **messenger** / Ghost add-on mode):
 
 - The Express server and (for conversations) **Postgres** run **locally** on your machine
-- The **Ghost** UI talks to that API; IPFS/Orbit are more prominent in the **`dev:altdream`** client
+- The **Ghost** UI talks to that API; point it at the same gateway as **alt.dream** when using shared offload/auth
 - Production messaging builds use `APP_MODE=messenger` and static files under `dist/public-messenger/`
 
 ### Environment Variables
@@ -214,10 +202,10 @@ npm run dev
 
 | Command | Description |
 |--------|-------------|
-| `npm run dev` | Dev server on port **5000**; **`VITE_APP_MODE=messenger`**, `APP_MODE=messenger` (Ghost) |
-| `npm run dev:altdream` | Full social / alt.dream-oriented client (not the default) |
+| `npm run dev` | Dev server on port **5000**; **`VITE_APP_MODE=messenger`**, `APP_MODE=messenger` (Ghost add-on) |
+| `npm run dev:altdream` | Legacy experimental all-in-one social client (not default) |
 | `npm run dev:messenger` | Same as `dev` (explicit) |
-| `npm run build` | Builds altdream + messenger clients + server bundle |
+| `npm run build` | Builds legacy altdream + messenger clients + server bundle |
 | `npm run build:server` | Server bundle to `dist/` only |
 | `npm run start:messenger` | Production: `APP_MODE=messenger` + `node dist/index.js` |
 | `npm run tauri:dev` / `tauri:build` | Tauri 2 desktop (needs Rust) |

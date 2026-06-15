@@ -1,19 +1,19 @@
 # alt.dream integration (gHosted)
 
-**alt.dream** is the browser hub for this digital ecosystem: an alternative to corporate centralization — a dream of freedom carried by **IPFS**, **DIDs**, and **your** nodes.
+**DreamSystemz** is the ecosystem; [**alt.dream**](https://github.com/lulzypher/alt.dream) is its **browser** (identity, feed, pin map, gateway sync). **gHosted** is the **messaging add-on** documented in this repository.
 
-This document describes how the [alt.dream](https://github.com/lulzypher/alt-dream) shell (GitHub repo slug `alt-dream`; rename the repository on GitHub when ready) consumes gHosted data for the **CID usage map**, **personas**, **per-app buckets**, and future mesh pinning metrics.
+This document describes how the alt.dream browser consumes gHosted data for **CID usage maps**, **personas**, **per-app buckets**, and future mesh pinning metrics.
 
 ## Personas and buckets
 
 - **Persona** — a distinct **DID-backed identity** (different public face, keys, and data boundaries). One human may run several personas.
-- **Bucket** — data scoped to one ecosystem app for that persona (e.g. `ghosted`, `shadowbox`). Reference events may carry `personaDid` and `ecosystemBucket` so alt.dream can show **per-persona, per-app** pin and usage views.
+- **Bucket** — data scoped to one ecosystem add-on for that persona (e.g. `ghosted`, `shadowbox`). Reference events may carry `personaDid` and `ecosystemBucket` so alt.dream can show **per-persona, per-app** pin and usage views.
 
 See [`shared/ecosystemProtocol.ts`](../shared/ecosystemProtocol.ts) for optional fields on `EcosystemReferenceEvent`.
 
 ## Shared protocol
 
-Types and Zod schemas live in [`shared/ecosystemProtocol.ts`](../shared/ecosystemProtocol.ts):
+Types and Zod schemas live in [`shared/ecosystemProtocol.ts`](../shared/ecosystemProtocol.ts) (keep aligned with alt.dream [`packages/protocol`](https://github.com/lulzypher/alt.dream/tree/main/packages/protocol)):
 
 - `EcosystemReferenceEvent` — links a CID (or `contentDigest`) to a stable place id (`stableRef`), `surface`, optional `personaDid`, optional `ecosystemBucket`.
 - `PinIntent` — optional declaration that a user intends to pin a CID (for dashboards).
@@ -23,7 +23,7 @@ Example events are exported as `ECOSYSTEM_REFERENCE_EXAMPLES` for tests and UI d
 
 ## Reference event stream
 
-gHosted records reference events in **browser `localStorage`** under keys `ghosted:ecosystemReferenceEvents:v1:<ownerDid>` when users create posts, send messages (with CID or digest), or update profile media.
+gHosted records reference events in **browser `localStorage`** under keys `ghosted:ecosystemReferenceEvents:v1:<ownerDid>` when users send messages (with CID or digest) or update profile media.
 
 Users can **export JSON** from the **CID map** page ([`/pin-map`](../client/src/pages/pin-map.tsx)). alt.dream should:
 
@@ -31,9 +31,9 @@ Users can **export JSON** from the **CID map** page ([`/pin-map`](../client/src/
 2. Build a graph: nodes are canonical addresses (`cid` or `digest:<hex>`); edges are `Place -> address` from each event; **partition by `personaDid` + `ecosystemBucket`** for bucket UIs.
 3. Highlight `multiUseAddresses` (same bytes referenced from multiple `stableRef`s).
 
-## Pin support, space, and bandwidth (hub-side)
+## Pin support, space, and bandwidth (browser-side)
 
-gHosted exposes **reference events** and optional **pin intents**; detailed **repo size, pin counts, and libp2p bandwidth** (share/leech) are intended to be aggregated in **alt.dream** from the local IPFS implementation. A typed stub for hub implementors lives in [`client/src/lib/altDreamMetrics.ts`](../client/src/lib/altDreamMetrics.ts).
+gHosted exposes **reference events** and optional **pin intents**; detailed **repo size, pin counts, and libp2p bandwidth** (share/leech) are aggregated in **alt.dream** from the local IPFS implementation. A typed stub for browser implementors lives in [`client/src/lib/altDreamMetrics.ts`](../client/src/lib/altDreamMetrics.ts).
 
 ## Chat replication prototype
 
@@ -41,4 +41,4 @@ gHosted exposes **reference events** and optional **pin intents**; detailed **re
 
 ## Copying into alt.dream
 
-Until a shared npm package exists, copy `shared/ecosystemProtocol.ts` into a `packages/protocol` workspace or use a git submodule. Keep `schemaVersion` fields stable and bump only when breaking JSON shape.
+Until a shared npm package exists, copy `shared/ecosystemProtocol.ts` into alt.dream `packages/protocol` or depend on `@altdream/protocol`. Keep `schemaVersion` fields stable and bump only when breaking JSON shape.

@@ -4,7 +4,7 @@ import themePlugin from "@replit/vite-plugin-shadcn-theme-json";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-/** `messenger` = gHosted.u inbox-only build; default = alt.dream (full social) client. */
+/** `messenger` = Ghost messaging add-on (default); else legacy experimental social bundle. */
 const isMessengerClient = process.env.VITE_APP_MODE === "messenger";
 
 export default defineConfig({

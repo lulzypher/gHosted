@@ -129,7 +129,7 @@ const PinMapPage: React.FC = () => {
             here so you can decide what to pin once. Export JSON for the{" "}
             <a
               className="text-primary underline"
-              href="https://github.com/lulzypher/alt-dream"
+              href="https://github.com/lulzypher/alt.dream"
               target="_blank"
               rel="noreferrer"
             >

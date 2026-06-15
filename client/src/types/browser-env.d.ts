@@ -3,9 +3,9 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** `messenger` = gHosted.u client; anything else = alt.dream (social) client. */
+  /** `messenger` = Ghost messaging add-on (default); anything else = legacy experimental social bundle. */
   readonly VITE_APP_MODE?: string;
-  /** Where alt.dream should link for DMs (default https://gHosted.u). */
+  /** Where the alt.dream browser should link for the full gHosted inbox (optional deploy URL). */
   readonly VITE_MESSENGER_URL?: string;
 }
 

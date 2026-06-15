@@ -1746,7 +1746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   } // end appMode full (posts, social, devices, pins, follow, peers, reactions)
 
-  // ENCRYPTED MESSAGING ROUTES (gHosted.u messenger + alt.dream when using server inbox)
+  // ENCRYPTED MESSAGING ROUTES (gHosted add-on + alt.dream browser when using server inbox)
 
   // Create or get a conversation between users
   app.post("/api/conversations", async (req: Request, res: Response) => {

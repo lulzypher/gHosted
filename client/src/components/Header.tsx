@@ -62,7 +62,7 @@ export function Header() {
               href={getMessengerAppUrl()}
               target="_blank"
               rel="noreferrer"
-              title="Open messenger (gHosted.u)"
+              title="Open gHosted messaging add-on"
               className="p-2 text-[#b0b3b8] hover:text-[#e4e6eb] rounded-full hover:bg-[#3a3b3c] inline-flex"
             >
               <MessageSquare className="h-5 w-5" />
